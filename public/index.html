@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dart Scorer</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#00d48a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Darts">
+
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+  <!-- ─── Landing Page ─────────────────────── -->
+  <div id="landingPage" class="page landing-page">
+    <div class="container">
+      <h1 class="app-title">Dart Scorer</h1>
+      <p class="app-subtitle">Scorekeeper for your dart games</p>
+
+      <div class="landing-section card">
+        <h2>New Game</h2>
+        <p class="text-muted">Start a new scorekeeper session</p>
+        <button class="btn btn-primary" onclick="showSetupScreen()">Create Game</button>
+      </div>
+
+      <div class="landing-section card">
+        <h2>Join Game</h2>
+        <p class="text-muted">Enter a game code to follow along</p>
+        <div class="join-row">
+          <input type="text" id="joinCodeInput" class="input" placeholder="Game code or URL" maxlength="50" />
+          <button class="btn btn-primary" onclick="joinGame()">Join</button>
+        </div>
+      </div>
+
+      <div class="landing-section card" id="recentGamesSection" style="display:none;">
+        <h2>Recent Games</h2>
+        <ul class="recent-games-list" id="recentGamesList"></ul>
+      </div>
+
+      <div class="landing-footer">
+        <a href="https://oz-projects.com" class="back-link">Back to OzProjects</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Setup Screen ─────────────────────── -->
+  <div id="setupScreen" class="page setup-screen hidden">
+    <div class="container">
+      <h1 class="app-title">New Game</h1>
+
+      <!-- Game Type Picker -->
+      <div class="card">
+        <h2>Game Type</h2>
+        <div class="game-type-grid">
+          <button class="game-type-btn selected" data-type="x01" onclick="selectGameType('x01')">
+            <span class="game-type-icon">01</span>
+            <span class="game-type-label">X01</span>
+            <span class="game-type-desc">301 / 501 / 701</span>
+          </button>
+          <button class="game-type-btn" data-type="cricket" onclick="selectGameType('cricket')">
+            <span class="game-type-icon">CK</span>
+            <span class="game-type-label">Cricket</span>
+            <span class="game-type-desc">Close numbers &amp; score</span>
+          </button>
+          <button class="game-type-btn" data-type="around-the-clock" onclick="selectGameType('around-the-clock')">
+            <span class="game-type-icon">AT</span>
+            <span class="game-type-label">Around the Clock</span>
+            <span class="game-type-desc">Hit 1 through 20</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Game Settings (dynamic) -->
+      <div class="card" id="gameSettings">
+        <!-- Populated by JS based on game type -->
+      </div>
+
+      <!-- Players -->
+      <div class="card">
+        <h2>Players</h2>
+        <div id="playerInputs"></div>
+        <button class="btn btn-secondary btn-small" id="addPlayerBtn" onclick="addPlayerInput()">+ Add Player</button>
+      </div>
+
+      <div class="button-row">
+        <button class="btn btn-primary" onclick="startGame()">Start Game</button>
+        <button class="btn btn-secondary" onclick="showLandingPage()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Game Screen ──────────────────────── -->
+  <div id="gameScreen" class="page game-screen hidden">
+    <div class="container">
+      <!-- Header -->
+      <div class="game-header">
+        <div class="game-header-left">
+          <button class="btn btn-small btn-secondary" onclick="leaveGame()">Leave</button>
+          <span class="game-type-badge" id="gameTypeBadge"></span>
+        </div>
+        <div class="game-header-right">
+          <div class="game-code-display">
+            <span class="text-muted">Code:</span>
+            <span class="game-code" id="gameCodeDisplay"></span>
+          </div>
+          <button class="btn btn-small btn-secondary" onclick="copyGameLink()">Copy Link</button>
+          <button class="btn btn-small btn-secondary" onclick="showRulesModal()">Rules</button>
+        </div>
+      </div>
+
+      <!-- Connection Status -->
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot"></span>
+        <span class="status-text">Connecting...</span>
+      </div>
+
+      <!-- Winner Banner -->
+      <div id="winnerBanner" class="winner-banner hidden"></div>
+
+      <!-- Scoreboard (populated by game module) -->
+      <div id="scoreboard"></div>
+
+      <!-- Turn Input (populated by game module) -->
+      <div id="turnInput"></div>
+
+      <!-- Game Actions -->
+      <div id="gameActions" class="game-actions">
+        <button class="btn btn-secondary btn-small" onclick="undoTurn()">Undo Last</button>
+        <button class="btn btn-danger btn-small" onclick="endGameEarly()">End Game</button>
+        <button class="btn btn-danger btn-small" onclick="deleteGame()">Delete</button>
+      </div>
+
+      <!-- Turn History -->
+      <div id="turnHistory" class="turn-history"></div>
+    </div>
+  </div>
+
+  <!-- ─── Rules Modal ──────────────────────── -->
+  <div class="modal-overlay" id="rulesModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="rulesModalTitle">Game Rules</h2>
+        <button class="modal-close" onclick="hideRulesModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="rulesModalBody"></div>
+    </div>
+  </div>
+
+  <!-- ─── Toast ────────────────────────────── -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Scripts -->
+  <script src="/js/x01.js"></script>
+  <script src="/js/cricket.js"></script>
+  <script src="/js/around-the-clock.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

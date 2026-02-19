@@ -1,0 +1,17 @@
+{
+  "name": "dart-scorer",
+  "version": "1.0.0",
+  "description": "Scorekeeper for dart games — X01, Cricket, and Around the Clock",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop dart-scorer",
+    "pm2:restart": "pm2 restart dart-scorer",
+    "pm2:logs": "pm2 logs dart-scorer"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.18.0"
+  }
+}
