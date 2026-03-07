@@ -144,6 +144,7 @@
           </div>
           <button class="btn btn-small btn-secondary" onclick="copyGameLink()">Copy Link</button>
           <button class="btn btn-small btn-secondary" onclick="showRulesModal()">Rules</button>
+          <button class="btn btn-small btn-secondary" id="muteToggleBtn" onclick="toggleAnnouncerMute()">Announcer: On</button>
         </div>
       </div>
 
@@ -200,6 +201,24 @@
     </div>
   </div>
 
+  <!-- ─── Voice Picker Modal ─────────────── -->
+  <div class="modal-overlay" id="voicePickerModal">
+    <div class="modal-content voice-picker-modal">
+      <div class="modal-header">
+        <h2>Announcer Voice</h2>
+        <button class="modal-close" onclick="closeVoicePicker()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="voice-lang-toggle">
+          <button class="voice-lang-btn selected" data-lang="en" onclick="setAnnouncerLang('en')">English</button>
+          <button class="voice-lang-btn" data-lang="es" onclick="setAnnouncerLang('es')">Español</button>
+        </div>
+        <div class="voice-list" id="voiceList"></div>
+        <button class="btn btn-secondary btn-small voice-preview-btn" onclick="previewVoice()">Preview</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── Sound Picker Modal ─────────────── -->
   <div class="modal-overlay" id="soundPickerModal">
     <div class="modal-content sound-picker-modal">
@@ -219,6 +238,7 @@
   <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/sounds.js"></script>
+  <script src="/js/announcer.js"></script>
   <script src="/js/x01.js"></script>
   <script src="/js/cricket.js"></script>
   <script src="/js/around-the-clock.js"></script>

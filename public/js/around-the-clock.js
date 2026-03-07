@@ -165,6 +165,7 @@ const AroundTheClock = {
     if (this.currentDarts.length >= 3) return;
     this.currentDarts.push({ hit });
     DartSounds.playForCurrentPlayer();
+    DartAnnouncer.announceATCDart(hit);
 
     // Check if sequence would be complete — auto-stop allowing more darts
     if (typeof gameData !== 'undefined') {
@@ -201,7 +202,17 @@ const AroundTheClock = {
         showToast(err.error || 'Error');
         return;
       }
+      const prevPlayerName = currentPlayer.name;
       gameData = await response.json();
+
+      // Announce ATC turn summary
+      const lastTurn = gameData.turns.length > 0 ? gameData.turns[gameData.turns.length - 1] : null;
+      if (lastTurn && lastTurn.playerName === prevPlayerName) {
+        const hitCount = lastTurn.hits ? lastTurn.hits.length : 0;
+        const player = gameData.players.find(p => p.name === prevPlayerName);
+        DartAnnouncer.announceATCSummary(prevPlayerName, hitCount, player ? player.currentTarget : 1);
+      }
+
       this.currentDarts = [];
       saveRecentGame(currentGameId, gameData);
       renderGame();

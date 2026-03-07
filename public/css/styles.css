@@ -1691,6 +1691,117 @@ body {
   100% { transform: scale(1); }
 }
 
+/* ─── Voice Picker Modal ─────────────────── */
+.voice-picker-modal {
+  max-width: 440px;
+}
+
+.voice-lang-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.voice-lang-btn {
+  flex: 1;
+  background: var(--secondary-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-light);
+  font-weight: 600;
+  padding: 0.6rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.voice-lang-btn:hover {
+  border-color: var(--accent-green);
+}
+
+.voice-lang-btn.selected {
+  border-color: var(--accent-green);
+  background: var(--dark-green);
+  color: var(--accent-green);
+}
+
+.voice-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+
+.voice-group-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.voice-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--secondary-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-light);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+}
+
+.voice-option:hover {
+  border-color: var(--accent-green);
+  background: var(--card-hover);
+}
+
+.voice-option.selected {
+  border-color: var(--accent-green);
+  background: var(--dark-green);
+}
+
+.voice-option .voice-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-option .voice-accent {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.voice-option .voice-check {
+  color: var(--accent-green);
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.voice-option.selected .voice-check {
+  opacity: 1;
+}
+
+.voice-preview-btn {
+  width: 100%;
+}
+
+/* Mute Toggle Button */
+#muteToggleBtn {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 /* ─── Responsive: Play Mode & Difficulty ──── */
 
 @media (max-width: 768px) {

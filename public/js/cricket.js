@@ -316,6 +316,21 @@ const Cricket = {
 
     this._darts[this._activeDart] = { number, multiplier: mult, label };
     DartSounds.playForCurrentPlayer();
+
+    // Check if this dart just closed the number
+    const currentPlayer = gameData.players[gameData.currentPlayerIndex];
+    const baseMarks = currentPlayer.marks[number] || 0;
+    let pendingMarks = 0;
+    for (const d of this._darts) {
+      if (d && d.number === number) pendingMarks += d.multiplier;
+    }
+    if (baseMarks + pendingMarks - mult < 3 && baseMarks + pendingMarks >= 3) {
+      DartAnnouncer.announceCricketDart(label);
+      setTimeout(() => DartAnnouncer.announceCricketClose(number), 600);
+    } else {
+      DartAnnouncer.announceCricketDart(label);
+    }
+
     this._selectedMult = 1; // reset after each tap
 
     // Auto-advance to next empty slot
@@ -350,6 +365,7 @@ const Cricket = {
     if (!this._darts.includes(null)) return;
     this._darts[this._activeDart] = { number: 0, multiplier: 0, label: 'Miss' };
     DartSounds.playForCurrentPlayer();
+    DartAnnouncer.announceCricketDart('Miss');
     this._selectedMult = 1;
 
     const nextEmpty = this._darts.findIndex(d => d === null);

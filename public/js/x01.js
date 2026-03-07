@@ -238,7 +238,16 @@ const X01 = {
         showToast(err.error || 'Error');
         return;
       }
+      const prevPlayerName = currentPlayer.name;
       gameData = await response.json();
+
+      // Announce the turn result
+      const lastTurn = gameData.turns.length > 0 ? gameData.turns[gameData.turns.length - 1] : null;
+      if (lastTurn && lastTurn.playerName === prevPlayerName) {
+        const prevPlayer = gameData.players.find(p => p.name === prevPlayerName);
+        DartAnnouncer.announceX01Turn(lastTurn, prevPlayer || { remaining: 0 });
+      }
+
       this.currentDarts = [];
       this.selectedMultiplier = 1;
       saveRecentGame(currentGameId, gameData);

@@ -15,6 +15,9 @@ const AIPlayer = {
 
     this.isAnimating = true;
 
+    // Wait for any ongoing announcer speech to finish before AI starts
+    await this.waitForAnnouncer();
+
     try {
       // 1. Request AI darts from server
       const response = await fetch('/api/game/' + currentGameId + '/ai-turn', { method: 'POST' });
@@ -35,12 +38,29 @@ const AIPlayer = {
       });
 
       if (submitResponse.ok) {
+        const prevName = currentPlayer.name;
         gameData = await submitResponse.json();
         saveRecentGame(currentGameId, gameData);
+
+        // Announce AI turn summary
+        const lastTurn = gameData.turns.length > 0 ? gameData.turns[gameData.turns.length - 1] : null;
+        if (lastTurn && lastTurn.playerName === prevName) {
+          if (gameData.gameType === 'x01') {
+            const aiPlayer = gameData.players.find(p => p.name === prevName);
+            DartAnnouncer.announceX01Turn(lastTurn, aiPlayer || { remaining: 0 });
+          } else if (gameData.gameType === 'around-the-clock') {
+            const hitCount = lastTurn.hits ? lastTurn.hits.length : 0;
+            const aiPlayer = gameData.players.find(p => p.name === prevName);
+            DartAnnouncer.announceATCSummary(prevName, hitCount, aiPlayer ? aiPlayer.currentTarget : 1);
+          }
+        }
       }
     } catch (e) {
       console.error('AI turn failed:', e);
     }
+
+    // Pause after turn summary announcement before switching turns
+    await this.delay(1500);
 
     this.isAnimating = false;
     renderGame();
@@ -83,21 +103,39 @@ const AIPlayer = {
         </div>
       `;
 
-      // Play sound for newly revealed dart
+      // Play sound and announce for newly revealed dart
       if (i > 0 && i <= darts.length) {
         DartSounds.playSound(DartSounds.getPlayerSound(player.id));
 
-        // Update Cricket scoreboard incrementally as each dart is revealed
+        // Announce the revealed dart
+        const revealedDart = darts[i - 1];
         if (gameData.gameType === 'cricket') {
+          const dartLabel = this.getDartLabel(revealedDart);
+          DartAnnouncer.announceCricketDart(dartLabel);
+
+          // Check if this dart closed the number
+          if (revealedDart.number && revealedDart.number !== 0) {
+            const baseMarks = player.marks[revealedDart.number] || 0;
+            let pendingMarks = 0;
+            for (let d = 0; d < i; d++) {
+              if (darts[d].number === revealedDart.number) pendingMarks += darts[d].multiplier;
+            }
+            if (baseMarks + pendingMarks - revealedDart.multiplier < 3 && baseMarks + pendingMarks >= 3) {
+              setTimeout(() => DartAnnouncer.announceCricketClose(revealedDart.number), 600);
+            }
+          }
+
           Cricket._darts = [null, null, null];
           for (let d = 0; d < i; d++) Cricket._darts[d] = darts[d];
           Cricket.renderScoreboard(gameData);
+        } else if (gameData.gameType === 'around-the-clock') {
+          DartAnnouncer.announceATCDart(revealedDart.hit);
         }
       }
 
       if (i < darts.length) {
-        // Wait before revealing next dart
-        await this.delay(600);
+        // Wait before revealing next dart — enough time for announcer to speak
+        await this.delay(1200);
       }
     }
 
@@ -108,13 +146,22 @@ const AIPlayer = {
     }
 
     // Final pause showing all darts
-    await this.delay(800);
+    await this.delay(1000);
   },
 
   getDartLabel(dart) {
     if (dart.label) return dart.label;
     if ('hit' in dart) return dart.hit ? 'HIT' : 'Miss';
     return '?';
+  },
+
+  async waitForAnnouncer() {
+    if (!window.speechSynthesis) return;
+    while (speechSynthesis.speaking) {
+      await this.delay(100);
+    }
+    // Small buffer after speech ends
+    await this.delay(400);
   },
 
   delay(ms) {

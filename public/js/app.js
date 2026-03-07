@@ -262,7 +262,91 @@ function closeSoundPicker() {
 // Close sound picker on overlay click
 document.addEventListener('click', function(e) {
   if (e.target.id === 'soundPickerModal') closeSoundPicker();
+  if (e.target.id === 'voicePickerModal') closeVoicePicker();
 });
+
+// ─── Voice Picker ────────────────────────────────────────
+
+function openVoicePicker() {
+  const lang = DartAnnouncer._lang;
+  document.querySelectorAll('.voice-lang-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.lang === lang);
+  });
+  renderVoiceList();
+  document.getElementById('voicePickerModal').classList.add('active');
+}
+
+function closeVoicePicker() {
+  document.getElementById('voicePickerModal').classList.remove('active');
+}
+
+function setAnnouncerLang(lang) {
+  DartAnnouncer.setLanguage(lang);
+  document.querySelectorAll('.voice-lang-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.lang === lang);
+  });
+  renderVoiceList();
+}
+
+function renderVoiceList() {
+  const voices = DartAnnouncer.getVoiceList();
+  const list = document.getElementById('voiceList');
+  const currentURI = DartAnnouncer._voiceURI;
+
+  if (voices.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="text-align:center;padding:1rem;">No voices available — using browser default.</p>';
+    return;
+  }
+
+  // Group by accent
+  const groups = {};
+  for (const v of voices) {
+    if (!groups[v.accent]) groups[v.accent] = [];
+    groups[v.accent].push(v);
+  }
+
+  let html = '';
+  for (const [accent, voiceGroup] of Object.entries(groups)) {
+    html += `<div class="voice-group-label">${accent}</div>`;
+    for (const v of voiceGroup) {
+      const selected = v.uri === currentURI;
+      html += `
+        <div class="voice-option ${selected ? 'selected' : ''}" data-uri="${v.uri}" onclick="pickVoice('${v.uri.replace(/'/g, "\\'")}')">
+          <span class="voice-name">${v.name}</span>
+          <span class="voice-accent">${v.lang}</span>
+          <span class="voice-check">\u2713</span>
+        </div>`;
+    }
+  }
+  list.innerHTML = html;
+}
+
+function pickVoice(uri) {
+  DartAnnouncer.setVoice(uri);
+  document.querySelectorAll('#voiceList .voice-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.uri === uri);
+  });
+}
+
+function previewVoice() {
+  const wasMuted = DartAnnouncer.isMuted();
+  if (wasMuted) DartAnnouncer._muted = false;
+  DartAnnouncer._cancelAndSpeak(DartAnnouncer._getPhrase('oneEighty'), { rate: 0.9, pitch: 1.1 });
+  if (wasMuted) setTimeout(() => { DartAnnouncer._muted = true; }, 100);
+}
+
+// ─── Mute Toggle ─────────────────────────────────────────
+
+function toggleAnnouncerMute() {
+  DartAnnouncer.toggleMute();
+  updateMuteButton();
+}
+
+function updateMuteButton() {
+  const btn = document.getElementById('muteToggleBtn');
+  if (!btn) return;
+  btn.textContent = DartAnnouncer.isMuted() ? 'Announcer: Off' : 'Announcer: On';
+}
 
 function saveSoundPreferences(players) {
   const prefs = {};
@@ -393,9 +477,33 @@ function renderGame() {
   if (gameData.winner) {
     banner.innerHTML = (gameData.endedEarly ? 'Game Over! ' : 'Winner! ') + escapeHtml(gameData.winner);
     banner.classList.remove('hidden');
+    // Announce winner (once)
+    if (!renderGame._winnerAnnounced || renderGame._winnerAnnounced !== gameData.winner) {
+      renderGame._winnerAnnounced = gameData.winner;
+      if (!gameData.endedEarly) {
+        DartAnnouncer.announceWinner(gameData.winner);
+        DartAnnouncer.playVictoryFanfare();
+      }
+    }
   } else {
     banner.classList.add('hidden');
+    renderGame._winnerAnnounced = null;
   }
+
+  // Announce turn change
+  if (gameData.gameActive) {
+    const currentPlayer = gameData.players[gameData.currentPlayerIndex];
+    if (currentPlayer && !currentPlayer.isAI) {
+      if (renderGame._lastAnnouncedPlayerIdx !== undefined &&
+          renderGame._lastAnnouncedPlayerIdx !== gameData.currentPlayerIndex) {
+        DartAnnouncer.announceTurnChange(currentPlayer.name);
+      }
+      renderGame._lastAnnouncedPlayerIdx = gameData.currentPlayerIndex;
+    }
+  }
+
+  // Update mute button
+  updateMuteButton();
 
   // Virtual player label
   const vpLabel = document.getElementById('virtualPlayerLabel');
@@ -453,6 +561,7 @@ function getGameMenuButtonHTML() {
       <button class="game-menu-toggle" onclick="toggleGameMenu(event)" title="Game options">&#8942;</button>
       <div class="game-menu-dropdown hidden" id="gameMenuDropdown">
         <button onclick="undoTurn(); closeGameMenu();">Undo Last</button>
+        <button onclick="openVoicePicker(); closeGameMenu();">Announcer Voice</button>
         <button onclick="endGameEarly(); closeGameMenu();">End Game</button>
         <button class="danger" onclick="deleteGame(); closeGameMenu();">Delete Game</button>
       </div>
@@ -724,6 +833,7 @@ window.addEventListener('hashchange', handleRoute);
 
 window.onload = function() {
   DartSounds.init();
+  DartAnnouncer.init();
   connectSocket();
   renderRecentGames();
   handleRoute();
