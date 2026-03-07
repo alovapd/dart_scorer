@@ -324,11 +324,9 @@ const Cricket = {
     for (const d of this._darts) {
       if (d && d.number === number) pendingMarks += d.multiplier;
     }
+    DartAnnouncer.announceCricketDart(label);
     if (baseMarks + pendingMarks - mult < 3 && baseMarks + pendingMarks >= 3) {
-      DartAnnouncer.announceCricketDart(label);
-      setTimeout(() => DartAnnouncer.announceCricketClose(number), 600);
-    } else {
-      DartAnnouncer.announceCricketDart(label);
+      DartAnnouncer.announceCricketClose(number);
     }
 
     this._selectedMult = 1; // reset after each tap

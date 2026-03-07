@@ -121,7 +121,7 @@ const AIPlayer = {
               if (darts[d].number === revealedDart.number) pendingMarks += darts[d].multiplier;
             }
             if (baseMarks + pendingMarks - revealedDart.multiplier < 3 && baseMarks + pendingMarks >= 3) {
-              setTimeout(() => DartAnnouncer.announceCricketClose(revealedDart.number), 600);
+              DartAnnouncer.announceCricketClose(revealedDart.number);
             }
           }
 

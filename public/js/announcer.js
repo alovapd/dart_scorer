@@ -151,9 +151,7 @@ const DartAnnouncer = {
     return text;
   },
 
-  _cancelAndSpeak(text, options = {}) {
-    if (this._muted || !text || !window.speechSynthesis) return;
-    speechSynthesis.cancel();
+  _makeUtterance(text, options = {}) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = this._lang === 'es' ? 'es-ES' : 'en-US';
     if (this._voiceURI) {
@@ -163,10 +161,22 @@ const DartAnnouncer = {
         utterance.lang = voice.lang;
       }
     }
-    utterance.rate = options.rate || 1.0;
+    utterance.rate = options.rate || 0.9;
     utterance.pitch = options.pitch || 1.0;
     utterance.volume = options.volume || 1.0;
-    speechSynthesis.speak(utterance);
+    return utterance;
+  },
+
+  _cancelAndSpeak(text, options = {}) {
+    if (this._muted || !text || !window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(this._makeUtterance(text, options));
+  },
+
+  // Queue without canceling — waits for current speech to finish first
+  _queueSpeak(text, options = {}) {
+    if (this._muted || !text || !window.speechSynthesis) return;
+    speechSynthesis.speak(this._makeUtterance(text, options));
   },
 
   // ── Announcement Methods ────────────────────────
@@ -179,11 +189,11 @@ const DartAnnouncer = {
   announceX01Turn(lastTurn, player) {
     if (!lastTurn) return;
     if (lastTurn.turnTotal === 180) {
-      this._cancelAndSpeak(this._getPhrase('oneEighty'), { rate: 0.9, pitch: 1.1 });
+      this._queueSpeak(this._getPhrase('oneEighty'), { rate: 0.85, pitch: 1.1 });
     } else if (lastTurn.bust) {
-      this._cancelAndSpeak(this._getPhrase('bust'), { rate: 1.1 });
+      this._queueSpeak(this._getPhrase('bust'));
     } else {
-      this._cancelAndSpeak(
+      this._queueSpeak(
         this._getPhrase('scoredRemaining', lastTurn.playerName, lastTurn.turnTotal, player.remaining)
       );
     }
@@ -207,24 +217,23 @@ const DartAnnouncer = {
     } else {
       text = this._getPhrase('single', label);
     }
-    this._cancelAndSpeak(text, { rate: 1.3 });
+    this._queueSpeak(text);
   },
 
   announceCricketClose(number) {
     const label = number === 25 ? 'Bull' : number;
-    this._cancelAndSpeak(this._getPhrase('closed', label));
+    this._queueSpeak(this._getPhrase('closed', label));
   },
 
   announceCricketPoints(points, number) {
     const label = number === 25 ? 'Bull' : number;
-    this._cancelAndSpeak(this._getPhrase('points', points, label));
+    this._queueSpeak(this._getPhrase('points', points, label));
   },
 
   // Around the Clock: per-dart
   announceATCDart(hit) {
-    this._cancelAndSpeak(
-      hit ? this._getPhrase('hit') : this._getPhrase('missATC'),
-      { rate: 1.3 }
+    this._queueSpeak(
+      hit ? this._getPhrase('hit') : this._getPhrase('missATC')
     );
   },
 
@@ -232,9 +241,9 @@ const DartAnnouncer = {
   announceATCSummary(playerName, hitCount, currentTarget) {
     if (hitCount > 0) {
       const label = currentTarget === 21 ? 'Bull' : currentTarget;
-      this._cancelAndSpeak(this._getPhrase('atcSummary', playerName, hitCount, label));
+      this._queueSpeak(this._getPhrase('atcSummary', playerName, hitCount, label));
     } else {
-      this._cancelAndSpeak(this._getPhrase('atcNone', playerName));
+      this._queueSpeak(this._getPhrase('atcNone', playerName));
     }
   },
 
