@@ -164,6 +164,7 @@ const AroundTheClock = {
   addDart(hit) {
     if (this.currentDarts.length >= 3) return;
     this.currentDarts.push({ hit });
+    DartSounds.playForCurrentPlayer();
 
     // Check if sequence would be complete — auto-stop allowing more darts
     if (typeof gameData !== 'undefined') {

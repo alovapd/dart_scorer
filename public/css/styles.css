@@ -450,6 +450,118 @@ body {
   opacity: 1;
 }
 
+/* ─── Sound Picker ─────────────────────────── */
+.sound-picker-btn {
+  background: var(--secondary-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 120px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sound-picker-btn:hover {
+  border-color: var(--accent-green);
+  color: var(--text-light);
+}
+
+.sound-picker-btn:active {
+  transform: scale(0.95);
+}
+
+.virtual-player-placeholder {
+  flex: 1;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 400px) {
+  .sound-picker-btn {
+    width: 40px;
+  }
+  .sound-picker-btn .sound-name {
+    display: none;
+  }
+}
+
+/* Sound Picker Modal */
+.sound-picker-modal {
+  max-width: 400px;
+}
+
+.sound-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.sound-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--secondary-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-light);
+  font-size: 0.85rem;
+  font-weight: 500;
+  position: relative;
+}
+
+.sound-option:hover {
+  border-color: var(--accent-green);
+  background: var(--card-hover);
+}
+
+.sound-option:active {
+  transform: scale(0.97);
+}
+
+.sound-option.selected {
+  border-color: var(--accent-green);
+  background: var(--dark-green);
+}
+
+.sound-option .sound-emoji {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.sound-option .sound-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sound-option .sound-check {
+  color: var(--accent-green);
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.sound-option.selected .sound-check {
+  opacity: 1;
+}
+
 /* ─── Game Screen ──────────────────────────── */
 .game-header {
   display: flex;

@@ -138,12 +138,32 @@ function renderPlayerInputs() {
   const container = document.getElementById('playerInputs');
   const addBtn = document.getElementById('addPlayerBtn');
 
+  const sounds = DartSounds.getSoundList();
+  const defaultSound = sounds[0]; // Classic Thud
+
   if (selectedPlayMode === 'solo' || selectedPlayMode === 'vs-computer') {
+    // Find the 'whoosh' sound for virtual player default
+    const whooshIdx = sounds.findIndex(s => s.id === 'whoosh');
+    const virtualDefault = whooshIdx >= 0 ? sounds[whooshIdx] : defaultSound;
+    const virtualIdx = whooshIdx >= 0 ? whooshIdx : 0;
+
     container.innerHTML = `
       <div class="player-input-row">
         <span class="player-number">1</span>
         <input type="text" class="input player-name-input" placeholder="Your Name" maxlength="30" />
+        <button class="sound-picker-btn" data-player="1" data-sound-index="0" onclick="openSoundPicker(1)" title="Dart sound">
+          ${defaultSound.emoji} <span class="sound-name">${defaultSound.name}</span>
+        </button>
       </div>
+      ${selectedPlayMode === 'vs-computer' ? `
+        <div class="player-input-row virtual-sound-row">
+          <span class="player-number">VS</span>
+          <span class="input virtual-player-placeholder">Virtual Opponent</span>
+          <button class="sound-picker-btn" data-player="virtual" data-sound-index="${virtualIdx}" onclick="openSoundPicker('virtual')" title="Virtual player sound">
+            ${virtualDefault.emoji} <span class="sound-name">${virtualDefault.name}</span>
+          </button>
+        </div>
+      ` : ''}
     `;
     if (addBtn) addBtn.style.display = 'none';
     return;
@@ -155,6 +175,9 @@ function renderPlayerInputs() {
       <div class="player-input-row">
         <span class="player-number">${i}</span>
         <input type="text" class="input player-name-input" placeholder="Player ${i}" maxlength="30" />
+        <button class="sound-picker-btn" data-player="${i}" data-sound-index="0" onclick="openSoundPicker(${i})" title="Dart sound">
+          ${defaultSound.emoji} <span class="sound-name">${defaultSound.name}</span>
+        </button>
         ${playerCount > 2 ? `<button class="remove-player-btn" onclick="removePlayer(${i})">&times;</button>` : ''}
       </div>
     `;
@@ -174,12 +197,87 @@ function removePlayer(index) {
   if (playerCount <= 2) return;
   const inputs = document.querySelectorAll('.player-name-input');
   const names = Array.from(inputs).map(input => input.value);
+  const soundBtns = document.querySelectorAll('.sound-picker-btn');
+  const soundIndices = Array.from(soundBtns).map(btn => parseInt(btn.dataset.soundIndex) || 0);
   names.splice(index - 1, 1);
+  soundIndices.splice(index - 1, 1);
   playerCount--;
   renderPlayerInputs();
-  // Restore names
+  // Restore names and sounds
   const newInputs = document.querySelectorAll('.player-name-input');
   names.forEach((name, i) => { if (newInputs[i]) newInputs[i].value = name; });
+  const newBtns = document.querySelectorAll('.sound-picker-btn');
+  const sounds = DartSounds.getSoundList();
+  soundIndices.forEach((si, i) => {
+    if (newBtns[i]) {
+      newBtns[i].dataset.soundIndex = si;
+      newBtns[i].innerHTML = `${sounds[si].emoji} <span class="sound-name">${sounds[si].name}</span>`;
+    }
+  });
+}
+
+let _soundPickerTarget = null; // which player button opened the modal
+
+function openSoundPicker(playerNum) {
+  _soundPickerTarget = playerNum;
+  const btn = document.querySelector(`.sound-picker-btn[data-player="${playerNum}"]`);
+  const currentIdx = btn ? parseInt(btn.dataset.soundIndex) || 0 : 0;
+  const sounds = DartSounds.getSoundList();
+
+  const grid = document.getElementById('soundGrid');
+  grid.innerHTML = sounds.map((s, i) => `
+    <div class="sound-option ${i === currentIdx ? 'selected' : ''}" data-sound-index="${i}" onclick="pickSound(${i})">
+      <span class="sound-emoji">${s.emoji}</span>
+      <span class="sound-label">${s.name}</span>
+      <span class="sound-check">\u2713</span>
+    </div>
+  `).join('');
+
+  document.getElementById('soundPickerModal').classList.add('active');
+}
+
+function pickSound(idx) {
+  const sounds = DartSounds.getSoundList();
+  // Update checkmark
+  document.querySelectorAll('#soundGrid .sound-option').forEach((el, i) => {
+    el.classList.toggle('selected', i === idx);
+  });
+  // Play preview
+  DartSounds.playSound(sounds[idx].id);
+  // Update the player's button
+  if (_soundPickerTarget !== null) {
+    const btn = document.querySelector(`.sound-picker-btn[data-player="${_soundPickerTarget}"]`);
+    if (btn) {
+      btn.dataset.soundIndex = idx;
+      btn.innerHTML = `${sounds[idx].emoji} <span class="sound-name">${sounds[idx].name}</span>`;
+    }
+  }
+}
+
+function closeSoundPicker() {
+  document.getElementById('soundPickerModal').classList.remove('active');
+  _soundPickerTarget = null;
+}
+
+// Close sound picker on overlay click
+document.addEventListener('click', function(e) {
+  if (e.target.id === 'soundPickerModal') closeSoundPicker();
+});
+
+function saveSoundPreferences(players) {
+  const prefs = {};
+  players.forEach(p => { if (p.soundId && !p.isAI) prefs[p.name] = p.soundId; });
+  localStorage.setItem('dart_scorer_sounds', JSON.stringify(prefs));
+}
+
+function loadSoundPreferences(players) {
+  try {
+    const prefs = JSON.parse(localStorage.getItem('dart_scorer_sounds')) || {};
+    players.forEach(p => {
+      if (!p.soundId) p.soundId = prefs[p.name] || (p.isAI ? 'whoosh' : 'thud');
+      DartSounds.setPlayerSound(p.id, p.soundId);
+    });
+  } catch (e) { /* ignore */ }
 }
 
 async function startGame() {
@@ -228,6 +326,26 @@ async function startGame() {
     }
     gameData = await response.json();
     currentGameId = gameData.gameId;
+
+    // Inject client-side sound selections
+    const soundBtns = document.querySelectorAll('.sound-picker-btn:not([data-player="virtual"])');
+    const virtualBtn = document.querySelector('.sound-picker-btn[data-player="virtual"]');
+    const soundList = DartSounds.getSoundList();
+    const soundSelections = Array.from(soundBtns).map(btn => {
+      const idx = parseInt(btn.dataset.soundIndex) || 0;
+      return soundList[idx].id;
+    });
+    const virtualSoundId = virtualBtn ? soundList[parseInt(virtualBtn.dataset.soundIndex) || 0].id : 'whoosh';
+    gameData.players.forEach((player, i) => {
+      if (player.isAI) {
+        player.soundId = virtualSoundId;
+      } else {
+        player.soundId = soundSelections[i] || 'thud';
+      }
+      DartSounds.setPlayerSound(player.id, player.soundId);
+    });
+    saveSoundPreferences(gameData.players);
+
     saveRecentGame(currentGameId, gameData);
     subscribeToGame(currentGameId);
     window.location.hash = '/game/' + currentGameId;
@@ -577,6 +695,7 @@ async function handleRoute() {
       const response = await fetch('/api/game/' + gameId);
       if (!response.ok) throw new Error('Not found');
       gameData = await response.json();
+      loadSoundPreferences(gameData.players);
       saveRecentGame(gameId, gameData);
       subscribeToGame(gameId);
       renderGame();
@@ -604,6 +723,7 @@ window.addEventListener('hashchange', handleRoute);
 // ─── Init ─────────────────────────────────────────────────
 
 window.onload = function() {
+  DartSounds.init();
   connectSocket();
   renderRecentGames();
   handleRoute();

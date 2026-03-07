@@ -315,6 +315,7 @@ const Cricket = {
       : `${prefixes[mult]}${number}`;
 
     this._darts[this._activeDart] = { number, multiplier: mult, label };
+    DartSounds.playForCurrentPlayer();
     this._selectedMult = 1; // reset after each tap
 
     // Auto-advance to next empty slot
@@ -348,6 +349,7 @@ const Cricket = {
   addMiss() {
     if (!this._darts.includes(null)) return;
     this._darts[this._activeDart] = { number: 0, multiplier: 0, label: 'Miss' };
+    DartSounds.playForCurrentPlayer();
     this._selectedMult = 1;
 
     const nextEmpty = this._darts.findIndex(d => d === null);

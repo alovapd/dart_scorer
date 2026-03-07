@@ -200,11 +200,25 @@
     </div>
   </div>
 
+  <!-- ─── Sound Picker Modal ─────────────── -->
+  <div class="modal-overlay" id="soundPickerModal">
+    <div class="modal-content sound-picker-modal">
+      <div class="modal-header">
+        <h2>Choose Dart Sound</h2>
+        <button class="modal-close" onclick="closeSoundPicker()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="sound-grid" id="soundGrid"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── Toast ────────────────────────────── -->
   <div id="toast" class="toast hidden"></div>
 
   <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/sounds.js"></script>
   <script src="/js/x01.js"></script>
   <script src="/js/cricket.js"></script>
   <script src="/js/around-the-clock.js"></script>

@@ -83,10 +83,28 @@ const AIPlayer = {
         </div>
       `;
 
+      // Play sound for newly revealed dart
+      if (i > 0 && i <= darts.length) {
+        DartSounds.playSound(DartSounds.getPlayerSound(player.id));
+
+        // Update Cricket scoreboard incrementally as each dart is revealed
+        if (gameData.gameType === 'cricket') {
+          Cricket._darts = [null, null, null];
+          for (let d = 0; d < i; d++) Cricket._darts[d] = darts[d];
+          Cricket.renderScoreboard(gameData);
+        }
+      }
+
       if (i < darts.length) {
         // Wait before revealing next dart
         await this.delay(600);
       }
+    }
+
+    // Reset Cricket pending darts after animation
+    if (gameData.gameType === 'cricket') {
+      Cricket._darts = [null, null, null];
+      Cricket._activeDart = 0;
     }
 
     // Final pause showing all darts
