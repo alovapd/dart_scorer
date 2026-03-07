@@ -1,7 +1,9 @@
 // ─── Cricket Game Module ──────────────────────────────────
 
 const Cricket = {
-  currentDarts: [],
+  _darts: [null, null, null],
+  _activeDart: 0,
+  _selectedMult: 1,
 
   getSettingsHTML() {
     return `
@@ -68,74 +70,214 @@ const Cricket = {
       <ul>
         <li>/ = 1 mark</li>
         <li>X = 2 marks</li>
-        <li>&#9421; = 3 marks (closed)</li>
+        <li>Circled X = 3 marks (closed)</li>
       </ul>
     `;
   },
 
-  _marksSymbol(count) {
+  // Traditional display order: 20 down to 15, then Bull
+  _displayOrder: [20, 19, 18, 17, 16, 15, 25],
+
+  _marksHTML(count, hasPending) {
     if (count === 0) return '';
-    if (count === 1) return '/';
-    if (count === 2) return 'X';
-    return '\u24D8'; // circled i → using ⊘ style — let's use a clear symbol
+    const cls = hasPending ? 'chalk-mark pending' : 'chalk-mark';
+    if (count === 1) return `<span class="${cls}">/</span>`;
+    if (count === 2) return `<span class="${cls}">X</span>`;
+    return `<span class="${cls} closed-mark"><span class="circle-x">X</span></span>`;
   },
 
-  _marksDisplay(count) {
-    if (count === 0) return '';
-    if (count === 1) return '/';
-    if (count === 2) return 'X';
-    return '\u2A02'; // Actually let's use simple text
+  // Simulate pending darts to get marks + points preview
+  _simulatePending(game) {
+    const result = { marks: {}, points: 0 };
+    const currentPlayer = game.players[game.currentPlayerIndex];
+    const scoringMode = game.settings.scoringMode;
+    const teamPlay = !!game.teams;
+
+    // Clone current marks for the active player/team
+    let marksSource, originalMarks, otherSources;
+    if (teamPlay) {
+      const team = game.teams.find(t =>
+        game.players.filter(p => p.teamId === t.id).some(p => p.id === currentPlayer.id)
+      );
+      originalMarks = team.marks;
+      marksSource = { ...team.marks };
+      const otherTeam = game.teams.find(t => t.id !== team.id);
+      otherSources = [otherTeam.marks];
+    } else {
+      originalMarks = currentPlayer.marks;
+      marksSource = { ...currentPlayer.marks };
+      otherSources = game.players
+        .filter(p => p.id !== currentPlayer.id)
+        .map(p => p.marks);
+    }
+
+    for (const d of this._darts) {
+      if (!d || d.number === 0 || !game.numbers.includes(d.number)) continue;
+      const num = d.number;
+      const dartMarks = d.multiplier;
+      const prevMarks = marksSource[num];
+      const closedByAll = otherSources.every(s => s[num] >= 3);
+
+      if (prevMarks >= 3 && closedByAll) continue;
+
+      if (prevMarks < 3) {
+        const toClose = 3 - prevMarks;
+        const added = Math.min(dartMarks, toClose);
+        const overflow = dartMarks - added;
+        marksSource[num] = prevMarks + added;
+        if (scoringMode && overflow > 0 && !closedByAll) {
+          result.points += overflow * (num === 25 ? 25 : num);
+        }
+      } else {
+        if (scoringMode && !closedByAll) {
+          result.points += dartMarks * (num === 25 ? 25 : num);
+        }
+      }
+    }
+
+    // Calculate mark deltas from original
+    for (const n of game.numbers) {
+      const delta = marksSource[n] - originalMarks[n];
+      if (delta > 0) result.marks[n] = delta;
+    }
+
+    return result;
   },
 
   renderScoreboard(game) {
     const currentPlayer = game.players[game.currentPlayerIndex];
     const teamPlay = !!game.teams;
     const scoringMode = game.settings.scoringMode;
-    const numbers = game.numbers;
-    const numberLabels = numbers.map(n => n === 25 ? 'Bull' : String(n));
+    const canTap = game.gameActive && this._darts.includes(null);
+    const pending = this._simulatePending(game);
 
     if (teamPlay) {
-      this._renderTeamBoard(game, currentPlayer, numberLabels, numbers, scoringMode);
+      this._renderTeamBoard(game, currentPlayer, scoringMode, canTap, pending);
     } else {
-      this._renderPlayerBoard(game, currentPlayer, numberLabels, numbers, scoringMode);
+      this._renderPlayerBoard(game, currentPlayer, scoringMode, canTap, pending);
     }
   },
 
-  _renderPlayerBoard(game, currentPlayer, numberLabels, numbers, scoringMode) {
-    let html = '<div class="cricket-board"><table>';
+  _renderPlayerBoard(game, currentPlayer, scoringMode, canTap, pending) {
+    const players = game.players;
+    const order = this._displayOrder;
+    const tap = canTap ? n => ` onclick="Cricket.tapNumber(${n})"` : () => '';
+    const tapClass = canTap ? ' tappable' : '';
+    const pendingPts = pending.points;
 
-    // Header: empty | player names
-    html += '<tr><th class="number-col">#</th>';
-    for (const p of game.players) {
-      const isActive = game.gameActive && p.id === currentPlayer.id;
-      html += `<th class="${isActive ? 'active-col' : ''}">${escapeHtml(p.name)}</th>`;
-    }
-    html += '</tr>';
+    if (players.length === 2) {
+      const p1 = players[0], p2 = players[1];
+      const p1Active = game.gameActive && p1.id === currentPlayer.id;
+      const p2Active = game.gameActive && p2.id === currentPlayer.id;
+      const p1Pts = p1.points + (p1.id === currentPlayer.id ? pendingPts : 0);
+      const p2Pts = p2.points + (p2.id === currentPlayer.id ? pendingPts : 0);
+      const p1HasPendingPts = p1.id === currentPlayer.id && pendingPts > 0;
+      const p2HasPendingPts = p2.id === currentPlayer.id && pendingPts > 0;
 
-    // Rows: number | marks per player
-    for (let i = 0; i < numbers.length; i++) {
-      html += `<tr><td class="number-col">${numberLabels[i]}</td>`;
-      for (const p of game.players) {
-        const marks = p.marks[numbers[i]];
+      let html = '<div class="cricket-board chalk"><table>';
+
+      html += '<tr class="chalk-header-row">';
+      html += `<th class="chalk-player-head left ${p1Active ? 'active' : ''}">
+        <div class="chalk-name">${escapeHtml(p1.name)}</div>
+        ${scoringMode ? `<div class="chalk-pts ${p1HasPendingPts ? 'pending' : ''}">${p1Pts}</div>` : ''}
+      </th>`;
+      html += '<th class="chalk-number-head"></th>';
+      html += `<th class="chalk-player-head right ${p2Active ? 'active' : ''}">
+        <div class="chalk-name">${escapeHtml(p2.name)}</div>
+        ${scoringMode ? `<div class="chalk-pts ${p2HasPendingPts ? 'pending' : ''}">${p2Pts}</div>` : ''}
+      </th>`;
+      html += '</tr>';
+
+      for (const n of order) {
+        const label = n === 25 ? 'Bull' : String(n);
+        const p1Pend = p1.id === currentPlayer.id ? (pending.marks[n] || 0) : 0;
+        const p2Pend = p2.id === currentPlayer.id ? (pending.marks[n] || 0) : 0;
+        const m1 = p1.marks[n] + p1Pend;
+        const m2 = p2.marks[n] + p2Pend;
+        html += `<tr class="${tapClass}"${tap(n)}>`;
+        html += `<td class="chalk-marks ${p1Active ? 'active' : ''} ${m1 >= 3 ? 'closed' : ''}">${this._marksHTML(m1, p1Pend > 0)}</td>`;
+        html += `<td class="chalk-number">${label}</td>`;
+        html += `<td class="chalk-marks ${p2Active ? 'active' : ''} ${m2 >= 3 ? 'closed' : ''}">${this._marksHTML(m2, p2Pend > 0)}</td>`;
+        html += '</tr>';
+      }
+
+      html += '</table></div>';
+      document.getElementById('scoreboard').innerHTML = html;
+    } else {
+      let html = '<div class="cricket-board chalk"><table>';
+
+      html += '<tr class="chalk-header-row"><th class="chalk-number-head">#</th>';
+      for (const p of players) {
         const isActive = game.gameActive && p.id === currentPlayer.id;
-        const closed = marks >= 3;
-        let display = '';
-        if (marks === 0) display = '';
-        else if (marks === 1) display = '/';
-        else if (marks === 2) display = 'X';
-        else display = '\u{1F5F8}'; // Actually let's use a checkmark ✓
-        html += `<td class="marks-cell ${closed ? 'closed' : ''} ${isActive ? 'active-col' : ''}">${marks >= 3 ? '&#10003;' : display}</td>`;
+        const pts = p.points + (p.id === currentPlayer.id ? pendingPts : 0);
+        const hasPendingPts = p.id === currentPlayer.id && pendingPts > 0;
+        html += `<th class="chalk-player-head ${isActive ? 'active' : ''}">
+          <div class="chalk-name">${escapeHtml(p.name)}</div>
+          ${scoringMode ? `<div class="chalk-pts ${hasPendingPts ? 'pending' : ''}">${pts}</div>` : ''}
+        </th>`;
       }
       html += '</tr>';
-    }
 
-    // Points row (only if scoring mode)
-    if (scoringMode) {
-      html += '<tr class="points-row"><td class="number-col">Pts</td>';
-      for (const p of game.players) {
-        const isActive = game.gameActive && p.id === currentPlayer.id;
-        html += `<td class="${isActive ? 'active-col' : ''}">${p.points}</td>`;
+      for (const n of order) {
+        const label = n === 25 ? 'Bull' : String(n);
+        html += `<tr class="${tapClass}"${tap(n)}><td class="chalk-number">${label}</td>`;
+        for (const p of players) {
+          const pPend = p.id === currentPlayer.id ? (pending.marks[n] || 0) : 0;
+          const marks = p.marks[n] + pPend;
+          const isActive = game.gameActive && p.id === currentPlayer.id;
+          html += `<td class="chalk-marks ${isActive ? 'active' : ''} ${marks >= 3 ? 'closed' : ''}">${this._marksHTML(marks, pPend > 0)}</td>`;
+        }
+        html += '</tr>';
       }
+
+      html += '</table></div>';
+      document.getElementById('scoreboard').innerHTML = html;
+    }
+  },
+
+  _renderTeamBoard(game, currentPlayer, scoringMode, canTap, pending) {
+    const teams = game.teams;
+    const order = this._displayOrder;
+    const tap = canTap ? n => ` onclick="Cricket.tapNumber(${n})"` : () => '';
+    const tapClass = canTap ? ' tappable' : '';
+    const pendingPts = pending.points;
+
+    const t1 = teams[0], t2 = teams[1];
+    const t1Players = game.players.filter(p => p.teamId === t1.id);
+    const t2Players = game.players.filter(p => p.teamId === t2.id);
+    const t1Active = t1Players.some(p => p.id === currentPlayer.id);
+    const t2Active = t2Players.some(p => p.id === currentPlayer.id);
+    const t1Pts = t1.points + (t1Active ? pendingPts : 0);
+    const t2Pts = t2.points + (t2Active ? pendingPts : 0);
+    const t1HasPendingPts = t1Active && pendingPts > 0;
+    const t2HasPendingPts = t2Active && pendingPts > 0;
+
+    let html = '<div class="cricket-board chalk"><table>';
+
+    html += '<tr class="chalk-header-row">';
+    html += `<th class="chalk-player-head left ${t1Active ? 'active' : ''}">
+      <div class="chalk-name">${escapeHtml(t1.name)}</div>
+      <div class="chalk-team-members">${t1Players.map(p => escapeHtml(p.name)).join(', ')}</div>
+      ${scoringMode ? `<div class="chalk-pts ${t1HasPendingPts ? 'pending' : ''}">${t1Pts}</div>` : ''}
+    </th>`;
+    html += '<th class="chalk-number-head"></th>';
+    html += `<th class="chalk-player-head right ${t2Active ? 'active' : ''}">
+      <div class="chalk-name">${escapeHtml(t2.name)}</div>
+      <div class="chalk-team-members">${t2Players.map(p => escapeHtml(p.name)).join(', ')}</div>
+      ${scoringMode ? `<div class="chalk-pts ${t2HasPendingPts ? 'pending' : ''}">${t2Pts}</div>` : ''}
+    </th>`;
+    html += '</tr>';
+
+    for (const n of order) {
+      const label = n === 25 ? 'Bull' : String(n);
+      const t1Pend = t1Active ? (pending.marks[n] || 0) : 0;
+      const t2Pend = t2Active ? (pending.marks[n] || 0) : 0;
+      const m1 = t1.marks[n] + t1Pend;
+      const m2 = t2.marks[n] + t2Pend;
+      html += `<tr class="${tapClass}"${tap(n)}>`;
+      html += `<td class="chalk-marks ${t1Active ? 'active' : ''} ${m1 >= 3 ? 'closed' : ''}">${this._marksHTML(m1, t1Pend > 0)}</td>`;
+      html += `<td class="chalk-number">${label}</td>`;
+      html += `<td class="chalk-marks ${t2Active ? 'active' : ''} ${m2 >= 3 ? 'closed' : ''}">${this._marksHTML(m2, t2Pend > 0)}</td>`;
       html += '</tr>';
     }
 
@@ -143,112 +285,26 @@ const Cricket = {
     document.getElementById('scoreboard').innerHTML = html;
   },
 
-  _renderTeamBoard(game, currentPlayer, numberLabels, numbers, scoringMode) {
-    let html = '<div class="cricket-board"><table>';
+  // ── Tap-to-score: 3 dart slots ─────────────────────────
 
-    // Header
-    html += '<tr><th class="number-col">#</th>';
-    for (const team of game.teams) {
-      const teamPlayers = game.players.filter(p => p.teamId === team.id);
-      const isActiveTeam = teamPlayers.some(p => p.id === currentPlayer.id);
-      html += `<th class="${isActiveTeam ? 'active-col' : ''}">${escapeHtml(team.name)}<br><span style="font-size:0.7rem;color:var(--text-muted)">${teamPlayers.map(p => escapeHtml(p.name)).join(', ')}</span></th>`;
-    }
-    html += '</tr>';
-
-    // Number rows
-    for (let i = 0; i < numbers.length; i++) {
-      html += `<tr><td class="number-col">${numberLabels[i]}</td>`;
-      for (const team of game.teams) {
-        const marks = team.marks[numbers[i]];
-        const closed = marks >= 3;
-        const teamPlayers = game.players.filter(p => p.teamId === team.id);
-        const isActiveTeam = teamPlayers.some(p => p.id === currentPlayer.id);
-        let display = '';
-        if (marks === 0) display = '';
-        else if (marks === 1) display = '/';
-        else if (marks === 2) display = 'X';
-        else display = '&#10003;';
-        html += `<td class="marks-cell ${closed ? 'closed' : ''} ${isActiveTeam ? 'active-col' : ''}">${display}</td>`;
-      }
-      html += '</tr>';
-    }
-
-    // Points
-    if (scoringMode) {
-      html += '<tr class="points-row"><td class="number-col">Pts</td>';
-      for (const team of game.teams) {
-        html += `<td>${team.points}</td>`;
-      }
-      html += '</tr>';
-    }
-
-    html += '</table></div>';
-    document.getElementById('scoreboard').innerHTML = html;
-  },
-
-  renderTurnInput(game) {
-    if (!game.gameActive) {
-      document.getElementById('turnInput').innerHTML = '';
-      return;
-    }
-
-    const currentPlayer = game.players[game.currentPlayerIndex];
-    const darts = this.currentDarts;
-    const numbers = game.numbers;
-
-    // Dart pills
-    let pillsHtml = '';
-    for (let i = 0; i < 3; i++) {
-      if (darts[i] !== undefined) {
-        pillsHtml += `<span class="dart-pill filled">${darts[i].label}</span>`;
-      } else {
-        pillsHtml += `<span class="dart-pill">-</span>`;
-      }
-    }
-
-    // Number buttons
-    const numberLabels = { 25: 'Bull' };
-    let buttonsHtml = '<div class="cricket-number-buttons">';
-    for (const n of numbers) {
-      const label = numberLabels[n] || n;
-      const isBull = n === 25;
-      buttonsHtml += `<button class="${isBull ? 'bull-btn' : ''}" onclick="Cricket.addDart(${n})" ${darts.length >= 3 ? 'disabled' : ''}>${label}</button>`;
-    }
-    buttonsHtml += `<button class="miss-btn" onclick="Cricket.addMiss()" ${darts.length >= 3 ? 'disabled' : ''} style="border-color:var(--danger);color:var(--danger)">Miss</button>`;
-    buttonsHtml += '</div>';
-
-    document.getElementById('turnInput').innerHTML = `
-      <div class="cricket-input-area">
-        <div class="current-turn-info">
-          <span class="current-player-name">${escapeHtml(currentPlayer.name)}'s Turn</span>
-          <div class="darts-thrown-display">${pillsHtml}</div>
-        </div>
-
-        <div class="multiplier-row">
-          <button class="multiplier-btn ${this._selectedMult === 1 ? 'selected' : ''}" onclick="Cricket.setMultiplier(1)">Single</button>
-          <button class="multiplier-btn ${this._selectedMult === 2 ? 'selected' : ''}" onclick="Cricket.setMultiplier(2)">Double</button>
-          <button class="multiplier-btn ${this._selectedMult === 3 ? 'selected' : ''}" onclick="Cricket.setMultiplier(3)">Triple</button>
-        </div>
-
-        ${buttonsHtml}
-
-        <div class="turn-actions">
-          <button class="btn btn-secondary btn-small" onclick="Cricket.clearDarts()" ${darts.length === 0 ? 'disabled' : ''}>Clear</button>
-          <button class="btn btn-primary" onclick="Cricket.submitTurn()" ${darts.length === 0 ? 'disabled' : ''}>Submit Turn</button>
-        </div>
-      </div>
-    `;
-  },
-
-  _selectedMult: 1,
-
-  setMultiplier(m) {
+  setMult(m) {
     this._selectedMult = m;
     if (typeof gameData !== 'undefined') this.renderTurnInput(gameData);
   },
 
-  addDart(number) {
-    if (this.currentDarts.length >= 3) return;
+  selectDart(index) {
+    this._darts[index] = null;
+    this._activeDart = index;
+    if (typeof gameData !== 'undefined') {
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+    }
+  },
+
+  tapNumber(number) {
+    if (!gameData || !gameData.gameActive) return;
+    if (!this._darts.includes(null)) return;
+
     let mult = this._selectedMult;
     // Bull max double
     if (number === 25 && mult === 3) mult = 2;
@@ -258,25 +314,113 @@ const Cricket = {
       ? (mult === 2 ? 'D-Bull' : 'Bull')
       : `${prefixes[mult]}${number}`;
 
-    this.currentDarts.push({ number, multiplier: mult, label });
-    this._selectedMult = 1;
-    if (typeof gameData !== 'undefined') this.renderTurnInput(gameData);
+    this._darts[this._activeDart] = { number, multiplier: mult, label };
+    this._selectedMult = 1; // reset after each tap
+
+    // Auto-advance to next empty slot
+    const nextEmpty = this._darts.findIndex(d => d === null);
+    if (nextEmpty !== -1) {
+      this._activeDart = nextEmpty;
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+    } else {
+      // Show the final state briefly before submitting
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+      setTimeout(() => this.submitTurn(), 300);
+    }
+  },
+
+  undoDart() {
+    for (let i = 2; i >= 0; i--) {
+      if (this._darts[i] !== null) {
+        this._darts[i] = null;
+        this._activeDart = i;
+        break;
+      }
+    }
+    if (typeof gameData !== 'undefined') {
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+    }
   },
 
   addMiss() {
-    if (this.currentDarts.length >= 3) return;
-    this.currentDarts.push({ number: 0, multiplier: 0, label: 'Miss' });
-    if (typeof gameData !== 'undefined') this.renderTurnInput(gameData);
+    if (!this._darts.includes(null)) return;
+    this._darts[this._activeDart] = { number: 0, multiplier: 0, label: 'Miss' };
+    this._selectedMult = 1;
+
+    const nextEmpty = this._darts.findIndex(d => d === null);
+    if (nextEmpty !== -1) {
+      this._activeDart = nextEmpty;
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+    } else {
+      this.renderScoreboard(gameData);
+      this.renderTurnInput(gameData);
+      setTimeout(() => this.submitTurn(), 300);
+    }
   },
 
-  clearDarts() {
-    this.currentDarts = [];
-    this._selectedMult = 1;
-    if (typeof gameData !== 'undefined') this.renderTurnInput(gameData);
+  renderTurnInput(game) {
+    if (!game.gameActive) {
+      document.getElementById('turnInput').innerHTML = '';
+      return;
+    }
+
+    const currentPlayer = game.players[game.currentPlayerIndex];
+
+    // If AI's turn, show placeholder — AIPlayer module handles the rest
+    if (currentPlayer.isAI) {
+      document.getElementById('turnInput').innerHTML = `
+        <div class="cricket-turn-bar ai-turn">
+          <span class="current-player-name">${escapeHtml(currentPlayer.name)}</span>
+          <span class="ai-badge">Virtual</span>
+          <div class="ai-thinking">Throwing...</div>
+        </div>
+      `;
+      return;
+    }
+
+    const darts = this._darts;
+    const active = this._activeDart;
+    const anyFilled = darts.some(d => d !== null);
+    const hasEmpty = darts.includes(null);
+    const mult = this._selectedMult;
+
+    let slotsHtml = '';
+    for (let i = 0; i < 3; i++) {
+      const isActive = hasEmpty && i === active;
+      const filled = darts[i] !== null;
+      slotsHtml += `
+        <button class="dart-slot ${isActive ? 'active' : ''} ${filled ? 'filled' : ''}"
+                onclick="Cricket.selectDart(${i})">
+          <span class="dart-slot-num">${i + 1}</span>
+          <span class="dart-slot-val">${filled ? darts[i].label : '-'}</span>
+        </button>`;
+    }
+
+    document.getElementById('turnInput').innerHTML = `
+      <div class="cricket-turn-bar">
+        <span class="current-player-name">${escapeHtml(currentPlayer.name)}'s Turn</span>
+        <div class="dart-slots">${slotsHtml}</div>
+        <div class="multiplier-row compact">
+          <button class="multiplier-btn ${mult === 1 ? 'selected' : ''}" onclick="Cricket.setMult(1)">S</button>
+          <button class="multiplier-btn ${mult === 2 ? 'selected' : ''}" onclick="Cricket.setMult(2)">D</button>
+          <button class="multiplier-btn ${mult === 3 ? 'selected' : ''}" onclick="Cricket.setMult(3)">T</button>
+        </div>
+        <div class="turn-bar-actions">
+          <button class="btn btn-secondary btn-small" onclick="Cricket.undoDart()" ${!anyFilled ? 'disabled' : ''}>Undo</button>
+          <button class="btn btn-secondary btn-small" onclick="Cricket.addMiss()" ${!hasEmpty ? 'disabled' : ''} style="border-color:var(--danger);color:var(--danger)">Miss</button>
+          <button class="btn btn-primary btn-small" onclick="Cricket.submitTurn()" ${!anyFilled ? 'disabled' : ''}>Submit</button>
+        </div>
+      </div>
+    `;
   },
 
   async submitTurn() {
-    if (this.currentDarts.length === 0) return;
+    const darts = this._darts.filter(d => d !== null);
+    if (darts.length === 0) return;
     const currentPlayer = gameData.players[gameData.currentPlayerIndex];
 
     try {
@@ -285,7 +429,7 @@ const Cricket = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           playerId: currentPlayer.id,
-          darts: this.currentDarts,
+          darts: darts,
         }),
       });
       if (!response.ok) {
@@ -294,8 +438,8 @@ const Cricket = {
         return;
       }
       gameData = await response.json();
-      this.currentDarts = [];
-      this._selectedMult = 1;
+      this._darts = [null, null, null];
+      this._activeDart = 0;
       saveRecentGame(currentGameId, gameData);
       renderGame();
     } catch (e) {
@@ -320,7 +464,8 @@ const Cricket = {
   },
 
   resetInput() {
-    this.currentDarts = [];
+    this._darts = [null, null, null];
+    this._activeDart = 0;
     this._selectedMult = 1;
   },
 };

@@ -45,6 +45,10 @@ body {
   padding: 20px;
 }
 
+.game-screen .container {
+  padding: 10px 14px;
+}
+
 .page { display: block; }
 .hidden { display: none !important; }
 
@@ -452,8 +456,8 @@ body {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
 }
 
 .game-header-left,
@@ -488,11 +492,7 @@ body {
 
 /* Connection Status */
 .connection-status {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  margin-bottom: 1rem;
+  display: none;
 }
 
 .connection-status .status-dot {
@@ -527,14 +527,77 @@ body {
   50% { box-shadow: 0 0 40px rgba(0, 212, 138, 0.6); }
 }
 
-/* Game Actions */
+/* Game Actions (legacy — now hidden, replaced by kebab menu) */
 .game-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 1.5rem 0;
-  padding-top: 1rem;
+  display: none;
+}
+
+/* ─── Kebab Game Menu (inline in button bars) ── */
+
+.game-menu-inline {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.game-menu-toggle {
+  background: var(--secondary-dark);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0.4rem 0.55rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.game-menu-toggle:hover {
+  border-color: var(--accent-green);
+  color: var(--text-light);
+}
+
+.game-menu-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 0.4rem;
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  min-width: 160px;
+}
+
+.game-menu-dropdown button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-light);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.game-menu-dropdown button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.game-menu-dropdown button.danger {
+  color: var(--danger);
+}
+
+.game-menu-dropdown button.danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.game-menu-dropdown button + button {
   border-top: 1px solid var(--border-color);
 }
 
@@ -542,8 +605,8 @@ body {
 .scoreboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .player-card {
@@ -576,7 +639,7 @@ body {
 
 .player-name {
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.3rem;
   margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
@@ -602,14 +665,14 @@ body {
 }
 
 .player-score-big {
-  font-size: 2.5rem;
+  font-size: 4rem;
   font-weight: 700;
   line-height: 1;
   margin-bottom: 0.5rem;
 }
 
 .player-stats {
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: var(--text-muted);
 }
 
@@ -630,8 +693,8 @@ body {
   background: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .dart-input-area h3 {
@@ -644,7 +707,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
@@ -685,7 +748,7 @@ body {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .number-pad button {
@@ -723,7 +786,7 @@ body {
 .multiplier-row {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .multiplier-btn {
@@ -733,7 +796,8 @@ body {
   border-radius: 8px;
   color: var(--text-light);
   font-weight: 600;
-  padding: 0.5rem;
+  padding: 0.75rem;
+  font-size: 1.1rem;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
@@ -766,99 +830,248 @@ body {
   justify-content: center;
 }
 
-/* ─── Cricket Specific ─────────────────────── */
-.cricket-board {
+/* ─── Cricket Chalkboard ──────────────────── */
+.cricket-board.chalk {
   background: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  position: relative;
 }
 
-.cricket-board table {
+.cricket-board.chalk::before {
+  display: none;
+}
+
+.cricket-board.chalk table {
   width: 100%;
   border-collapse: collapse;
+  position: relative;
+  z-index: 1;
 }
 
-.cricket-board th,
-.cricket-board td {
-  padding: 0.6rem 0.5rem;
+.cricket-board.chalk th,
+.cricket-board.chalk td {
+  padding: 1rem 0.75rem;
   text-align: center;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.cricket-board th {
-  background: var(--secondary-dark);
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--accent-green);
-}
-
-.cricket-board .number-col {
-  font-weight: 700;
-  font-size: 1.1rem;
-  width: 50px;
-  background: var(--secondary-dark);
-}
-
-.cricket-board .marks-cell {
-  font-size: 1.2rem;
-  letter-spacing: 2px;
-}
-
-.cricket-board .marks-cell.closed {
-  color: var(--accent-green);
-}
-
-.cricket-board .points-row td {
-  font-weight: 700;
-  font-size: 1.1rem;
+.cricket-board.chalk tr:last-child td {
   border-bottom: none;
-  background: var(--secondary-dark);
 }
 
-.cricket-board .active-col {
-  background: rgba(0, 212, 138, 0.08);
+/* Header row */
+.chalk-header-row {
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15) !important;
 }
 
-.cricket-input-area {
+.chalk-player-head {
+  color: var(--text-light);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 1rem 0.75rem !important;
+  min-width: 120px;
+}
+
+.chalk-player-head.active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chalk-player-head.active .chalk-name {
+  color: var(--accent-green);
+}
+
+.chalk-name {
+  font-size: 1.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.chalk-pts {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--text-light);
+  line-height: 1.2;
+}
+
+.chalk-team-members {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.chalk-number-head {
+  width: 60px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Number cells (center column) */
+.chalk-number {
+  font-weight: 700;
+  font-size: 2rem;
+  color: var(--text-light);
+  width: 80px;
+  background: rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.05em;
+}
+
+/* Marks cells */
+.chalk-marks {
+  font-size: 2.4rem;
+  color: var(--text-light);
+  min-width: 100px;
+  height: 60px;
+  vertical-align: middle;
+}
+
+.chalk-marks.active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chalk-marks.closed {
+  color: var(--accent-green);
+}
+
+.chalk-mark {
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* Circled X for closed numbers */
+.circle-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Active player glow on header */
+.chalk-player-head.active .chalk-pts {
+  color: var(--accent-green);
+}
+
+/* Pending marks & points (not yet submitted) */
+.chalk-mark.pending,
+.chalk-pts.pending {
+  animation: pendingPulse 1s ease-in-out infinite;
+}
+
+@keyframes pendingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Tappable scoreboard rows */
+.cricket-board.chalk tr.tappable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cricket-board.chalk tr.tappable:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cricket-board.chalk tr.tappable:active {
+  background: rgba(125, 255, 186, 0.12);
+}
+
+/* Compact turn bar */
+.cricket-turn-bar {
   background: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.cricket-number-buttons {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.cricket-turn-bar .current-player-name {
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+/* Dart slot buttons */
+.dart-slots {
+  display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  flex: 1;
+  justify-content: center;
 }
 
-.cricket-number-buttons button {
+.dart-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
   background: var(--secondary-dark);
   border: 2px solid var(--border-color);
-  border-radius: 8px;
-  color: var(--text-light);
-  font-size: 1.1rem;
-  font-weight: 600;
-  padding: 0.75rem;
+  border-radius: 10px;
+  padding: 0.4rem 1rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 60px;
+  color: var(--text-muted);
 }
 
-.cricket-number-buttons button:hover {
+.dart-slot .dart-slot-num {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.dart-slot .dart-slot-val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-light);
+}
+
+.dart-slot.active {
   border-color: var(--accent-green);
-  background: var(--card-hover);
-}
-
-.cricket-number-buttons button:active {
-  transform: scale(0.95);
-}
-
-.cricket-number-buttons button.bull-btn {
   background: var(--dark-green);
+}
+
+.dart-slot.active .dart-slot-num {
+  color: var(--accent-green);
+}
+
+.dart-slot.filled .dart-slot-val {
+  color: var(--accent-green);
+}
+
+.dart-slot:hover {
+  border-color: var(--accent-green);
+}
+
+.turn-bar-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Compact multiplier in turn bar */
+.multiplier-row.compact {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0;
+}
+
+.multiplier-row.compact .multiplier-btn {
+  padding: 0.5rem 0.85rem;
+  font-size: 1.05rem;
+  min-width: 44px;
+  flex: 0;
 }
 
 /* ─── Around the Clock Specific ────────────── */
@@ -900,7 +1113,7 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   border: 2px solid var(--border-color);
   background: var(--secondary-dark);
 }
@@ -921,8 +1134,8 @@ body {
   background: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
   text-align: center;
 }
 
@@ -976,6 +1189,7 @@ body {
 /* ─── Turn History ─────────────────────────── */
 .turn-history {
   margin-top: 1rem;
+  display: none;
 }
 
 .turn-history h3 {
@@ -1103,6 +1317,28 @@ body {
   color: var(--text-muted);
 }
 
+/* ─── Confirm Modal ───────────────────────── */
+.confirm-modal {
+  max-width: 380px;
+}
+
+.confirm-modal .modal-body p {
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.confirm-actions .btn {
+  min-width: 90px;
+}
+
 /* ─── Toast ────────────────────────────────── */
 .toast {
   position: fixed;
@@ -1157,9 +1393,18 @@ body {
     grid-template-columns: repeat(5, 1fr);
   }
 
-  .cricket-board {
+  .cricket-board.chalk {
     overflow-x: auto;
+    border-width: 4px;
   }
+
+  .chalk-marks { min-width: 70px; font-size: 1.8rem; height: 48px; }
+  .chalk-number { font-size: 1.5rem; width: 60px; }
+  .chalk-name { font-size: 1.1rem; }
+  .chalk-pts { font-size: 1.8rem; }
+  .circle-x { width: 32px; height: 32px; font-size: 1.2rem; }
+  .player-score-big { font-size: 3rem; }
+  .player-name { font-size: 1.1rem; }
 }
 
 @media (max-width: 480px) {
@@ -1169,7 +1414,10 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .player-score-big { font-size: 2rem; }
+  .player-score-big { font-size: 2.5rem; }
+  .chalk-marks { min-width: 60px; font-size: 1.5rem; height: 42px; }
+  .chalk-number { font-size: 1.3rem; width: 50px; }
+  .circle-x { width: 28px; height: 28px; font-size: 1rem; }
 
   .game-actions {
     flex-direction: column;
@@ -1181,4 +1429,163 @@ body {
   }
 
   .input { font-size: 16px; }
+}
+
+/* ─── Play Mode Picker ────────────────────── */
+
+.play-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.play-mode-btn {
+  background: #1a1a2e;
+  border: 2px solid #2a3a5c;
+  border-radius: 12px;
+  padding: 1rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  color: #ffffff;
+}
+
+.play-mode-btn:hover {
+  border-color: #00d48a;
+  background: #1a2a3e;
+}
+
+.play-mode-btn.selected {
+  border-color: #00d48a;
+  background: #006b4a;
+}
+
+.play-mode-icon {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #00d48a;
+}
+
+.play-mode-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.play-mode-desc {
+  font-size: 0.7rem;
+  color: #a0a0a0;
+  text-align: center;
+}
+
+/* ─── AI Difficulty Picker ────────────────── */
+
+.difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.difficulty-btn {
+  background: #1a1a2e;
+  border: 2px solid #2a3a5c;
+  border-radius: 8px;
+  padding: 0.75rem;
+  cursor: pointer;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.difficulty-btn:hover {
+  border-color: #00d48a;
+}
+
+.difficulty-btn.selected {
+  border-color: #00d48a;
+  background: #006b4a;
+  color: #00d48a;
+}
+
+/* ─── Virtual Player Label ─────────────────── */
+
+.virtual-player-label {
+  text-align: center;
+  color: #a0a0a0;
+  font-size: 0.75rem;
+  font-style: italic;
+  padding: 0;
+  margin-bottom: 0.15rem;
+}
+
+/* ─── AI Turn Display ─────────────────────── */
+
+.ai-badge {
+  background: #006b4a;
+  color: #00d48a;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 0.5rem;
+}
+
+.ai-turn {
+  border-color: #00d48a;
+}
+
+.ai-thinking {
+  text-align: center;
+  color: #a0a0a0;
+  font-style: italic;
+  padding: 1rem 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.ai-turn-summary {
+  text-align: center;
+  color: #a0a0a0;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.dart-pill.ai-revealing {
+  animation: aiReveal 0.5s ease-in-out infinite;
+  border-color: #ffa502;
+  color: #ffa502;
+}
+
+.dart-pill.ai-revealed {
+  animation: dartPop 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes aiReveal {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes dartPop {
+  0% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Responsive: Play Mode & Difficulty ──── */
+
+@media (max-width: 768px) {
+  .play-mode-grid {
+    grid-template-columns: 1fr;
+  }
+  .difficulty-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

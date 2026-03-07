@@ -44,7 +44,7 @@
       </div>
 
       <div class="landing-footer">
-        <a href="https://oz-projects.com" class="back-link">Back to OzProjects</a>
+        <a href="https://app.oz-projects.com" class="back-link">Back to OzProjects</a>
       </div>
     </div>
   </div>
@@ -53,6 +53,39 @@
   <div id="setupScreen" class="page setup-screen hidden">
     <div class="container">
       <h1 class="app-title">New Game</h1>
+
+      <!-- Play Mode Picker -->
+      <div class="card">
+        <h2>Play Mode</h2>
+        <div class="play-mode-grid">
+          <button class="play-mode-btn selected" data-mode="multiplayer" onclick="selectPlayMode('multiplayer')">
+            <span class="play-mode-icon">2+</span>
+            <span class="play-mode-label">Multiplayer</span>
+            <span class="play-mode-desc">2-8 players</span>
+          </button>
+          <button class="play-mode-btn" data-mode="solo" onclick="selectPlayMode('solo')">
+            <span class="play-mode-icon">1</span>
+            <span class="play-mode-label">Solo Practice</span>
+            <span class="play-mode-desc">Just you</span>
+          </button>
+          <button class="play-mode-btn" data-mode="vs-computer" onclick="selectPlayMode('vs-computer')">
+            <span class="play-mode-icon">VS</span>
+            <span class="play-mode-label">vs Virtual</span>
+            <span class="play-mode-desc">Play a virtual opponent</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- AI Difficulty (shown only for vs-computer) -->
+      <div class="card hidden" id="aiDifficultyCard">
+        <h2>Difficulty</h2>
+        <div class="difficulty-grid">
+          <button class="difficulty-btn" data-diff="easy" onclick="selectDifficulty('easy')">Easy</button>
+          <button class="difficulty-btn selected" data-diff="average" onclick="selectDifficulty('average')">Average</button>
+          <button class="difficulty-btn" data-diff="hard" onclick="selectDifficulty('hard')">Hard</button>
+          <button class="difficulty-btn" data-diff="professional" onclick="selectDifficulty('professional')">Pro</button>
+        </div>
+      </div>
 
       <!-- Game Type Picker -->
       <div class="card">
@@ -123,18 +156,17 @@
       <!-- Winner Banner -->
       <div id="winnerBanner" class="winner-banner hidden"></div>
 
+      <!-- Virtual Player Label (shown for vs-computer games) -->
+      <div id="virtualPlayerLabel" class="virtual-player-label hidden"></div>
+
       <!-- Scoreboard (populated by game module) -->
       <div id="scoreboard"></div>
 
       <!-- Turn Input (populated by game module) -->
       <div id="turnInput"></div>
 
-      <!-- Game Actions -->
-      <div id="gameActions" class="game-actions">
-        <button class="btn btn-secondary btn-small" onclick="undoTurn()">Undo Last</button>
-        <button class="btn btn-danger btn-small" onclick="endGameEarly()">End Game</button>
-        <button class="btn btn-danger btn-small" onclick="deleteGame()">Delete</button>
-      </div>
+      <!-- Game Actions (now rendered inside turn input via kebab menu) -->
+      <div id="gameActions" class="game-actions" style="display:none;"></div>
 
       <!-- Turn History -->
       <div id="turnHistory" class="turn-history"></div>
@@ -152,13 +184,47 @@
     </div>
   </div>
 
+  <!-- ─── Confirm Modal ───────────────────── -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-content confirm-modal">
+      <div class="modal-header">
+        <h2 id="confirmModalTitle">Confirm</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMessage"></p>
+        <div class="confirm-actions">
+          <button class="btn btn-secondary" id="confirmModalCancel">Cancel</button>
+          <button class="btn btn-danger" id="confirmModalOk">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── Toast ────────────────────────────── -->
   <div id="toast" class="toast hidden"></div>
 
   <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/js/x01.js"></script>
   <script src="/js/cricket.js"></script>
   <script src="/js/around-the-clock.js"></script>
+  <script src="/js/ai.js"></script>
   <script src="/js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated') {
+              window.location.reload();
+            }
+          });
+        });
+        // Check for updates every 30 seconds
+        setInterval(() => reg.update(), 30000);
+      });
+    }
+  </script>
 </body>
 </html>

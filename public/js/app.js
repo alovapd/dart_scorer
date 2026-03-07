@@ -2,10 +2,11 @@
 
 let gameData = null;
 let currentGameId = null;
-let ws = null;
-let wsReconnectTimer = null;
+let socket = null;
 let selectedGameType = 'x01';
 let playerCount = 2;
+let selectedPlayMode = 'multiplayer';
+let selectedDifficulty = 'average';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
 function showToast(message) {
   const toast = document.getElementById('toast');
   toast.textContent = message;
@@ -22,6 +25,32 @@ function showToast(message) {
   // Remove and re-add to restart animation
   const clone = toast.cloneNode(true);
   toast.parentNode.replaceChild(clone, toast);
+}
+
+function showConfirm(title, message, btnLabel) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirmModal');
+    document.getElementById('confirmModalTitle').textContent = title;
+    document.getElementById('confirmModalMessage').textContent = message;
+    const okBtn = document.getElementById('confirmModalOk');
+    okBtn.textContent = btnLabel || 'Confirm';
+    modal.classList.add('active');
+
+    function cleanup(result) {
+      modal.classList.remove('active');
+      okBtn.removeEventListener('click', onOk);
+      document.getElementById('confirmModalCancel').removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlay(e) { if (e.target === modal) cleanup(false); }
+
+    okBtn.addEventListener('click', onOk);
+    document.getElementById('confirmModalCancel').addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+  });
 }
 
 // ─── Screen Navigation ────────────────────────────────────
@@ -40,6 +69,16 @@ function showSetupScreen() {
   document.getElementById('gameScreen').classList.add('hidden');
   selectedGameType = 'x01';
   playerCount = 2;
+  selectedPlayMode = 'multiplayer';
+  selectedDifficulty = 'average';
+  // Reset play mode button states
+  document.querySelectorAll('.play-mode-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.mode === 'multiplayer');
+  });
+  document.querySelectorAll('.difficulty-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.diff === 'average');
+  });
+  document.getElementById('aiDifficultyCard').classList.add('hidden');
   renderSetup();
 }
 
@@ -59,6 +98,23 @@ function selectGameType(type) {
   renderSettings();
 }
 
+function selectPlayMode(mode) {
+  selectedPlayMode = mode;
+  document.querySelectorAll('.play-mode-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.mode === mode);
+  });
+  document.getElementById('aiDifficultyCard').classList.toggle('hidden', mode !== 'vs-computer');
+  renderSettings();
+  renderPlayerInputs();
+}
+
+function selectDifficulty(diff) {
+  selectedDifficulty = diff;
+  document.querySelectorAll('.difficulty-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.diff === diff);
+  });
+}
+
 function renderSetup() {
   renderSettings();
   renderPlayerInputs();
@@ -71,10 +127,28 @@ function renderSettings() {
     case 'cricket': container.innerHTML = Cricket.getSettingsHTML(); break;
     case 'around-the-clock': container.innerHTML = AroundTheClock.getSettingsHTML(); break;
   }
+  // Hide team play for solo/vs-computer
+  if (selectedPlayMode !== 'multiplayer' && selectedGameType === 'cricket') {
+    const teamToggle = document.getElementById('settingTeamPlay');
+    if (teamToggle) teamToggle.closest('.setting-row').style.display = 'none';
+  }
 }
 
 function renderPlayerInputs() {
   const container = document.getElementById('playerInputs');
+  const addBtn = document.getElementById('addPlayerBtn');
+
+  if (selectedPlayMode === 'solo' || selectedPlayMode === 'vs-computer') {
+    container.innerHTML = `
+      <div class="player-input-row">
+        <span class="player-number">1</span>
+        <input type="text" class="input player-name-input" placeholder="Your Name" maxlength="30" />
+      </div>
+    `;
+    if (addBtn) addBtn.style.display = 'none';
+    return;
+  }
+
   let html = '';
   for (let i = 1; i <= playerCount; i++) {
     html += `
@@ -87,7 +161,6 @@ function renderPlayerInputs() {
   }
   container.innerHTML = html;
 
-  const addBtn = document.getElementById('addPlayerBtn');
   if (addBtn) addBtn.style.display = playerCount >= 8 ? 'none' : '';
 }
 
@@ -111,9 +184,10 @@ function removePlayer(index) {
 
 async function startGame() {
   const inputs = document.querySelectorAll('.player-name-input');
-  const playerNames = Array.from(inputs).map((input, i) => input.value.trim() || `Player ${i + 1}`);
+  const defaultName = selectedPlayMode === 'multiplayer' ? 'Player' : 'You';
+  const playerNames = Array.from(inputs).map((input, i) => input.value.trim() || `${defaultName}${selectedPlayMode === 'multiplayer' ? ' ' + (i + 1) : ''}`);
 
-  if (playerNames.length < 2) {
+  if (selectedPlayMode === 'multiplayer' && playerNames.length < 2) {
     showToast('Need at least 2 players');
     return;
   }
@@ -125,17 +199,27 @@ async function startGame() {
     case 'around-the-clock': settings = AroundTheClock.getSettings(); break;
   }
 
+  // Force team play off for non-multiplayer
+  if (selectedPlayMode !== 'multiplayer') {
+    settings.teamPlay = false;
+  }
+
   // Validate team play requires even number
   if (selectedGameType === 'cricket' && settings.teamPlay && playerNames.length % 2 !== 0) {
     showToast('Team play needs an even number of players');
     return;
   }
 
+  const payload = { gameType: selectedGameType, playerNames, settings, playMode: selectedPlayMode };
+  if (selectedPlayMode === 'vs-computer') {
+    payload.aiDifficulty = selectedDifficulty;
+  }
+
   try {
     const response = await fetch('/api/game/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameType: selectedGameType, playerNames, settings }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const err = await response.json();
@@ -191,10 +275,19 @@ function renderGame() {
   if (gameData.winner) {
     banner.innerHTML = (gameData.endedEarly ? 'Game Over! ' : 'Winner! ') + escapeHtml(gameData.winner);
     banner.classList.remove('hidden');
-    document.getElementById('gameActions').style.display = 'none';
   } else {
     banner.classList.add('hidden');
-    document.getElementById('gameActions').style.display = '';
+  }
+
+  // Virtual player label
+  const vpLabel = document.getElementById('virtualPlayerLabel');
+  if (gameData.playMode === 'vs-computer') {
+    const aiPlayer = gameData.players.find(p => p.isAI);
+    const diffLabel = capitalize(gameData.aiDifficulty || 'average');
+    vpLabel.textContent = `${aiPlayer ? aiPlayer.name : 'Opponent'} (Virtual \u2014 ${diffLabel})`;
+    vpLabel.classList.remove('hidden');
+  } else {
+    vpLabel.classList.add('hidden');
   }
 
   // Delegate to game module
@@ -202,9 +295,26 @@ function renderGame() {
   module.renderScoreboard(gameData);
   module.renderTurnInput(gameData);
 
+  // Inject kebab game menu into the multiplier row or action bar
+  if (gameData.gameActive) {
+    const turnInput = document.getElementById('turnInput');
+    const target = turnInput.querySelector('.multiplier-row')
+      || turnInput.querySelector('.turn-bar-actions')
+      || turnInput.querySelector('.atc-dart-buttons')
+      || turnInput.querySelector('.turn-actions');
+    if (target) {
+      target.insertAdjacentHTML('beforeend', getGameMenuButtonHTML());
+    }
+  }
+
   // Turn history
   const historyHtml = module.renderHistory(gameData);
   document.getElementById('turnHistory').innerHTML = historyHtml;
+
+  // Check if AI needs to take a turn
+  if (typeof AIPlayer !== 'undefined') {
+    AIPlayer.handleTurnIfNeeded();
+  }
 }
 
 function getGameModule() {
@@ -217,10 +327,45 @@ function getGameModule() {
   }
 }
 
+// ─── Game Menu (kebab) ───────────────────────────────────
+
+function getGameMenuButtonHTML() {
+  return `
+    <div class="game-menu-inline">
+      <button class="game-menu-toggle" onclick="toggleGameMenu(event)" title="Game options">&#8942;</button>
+      <div class="game-menu-dropdown hidden" id="gameMenuDropdown">
+        <button onclick="undoTurn(); closeGameMenu();">Undo Last</button>
+        <button onclick="endGameEarly(); closeGameMenu();">End Game</button>
+        <button class="danger" onclick="deleteGame(); closeGameMenu();">Delete Game</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleGameMenu(e) {
+  e.stopPropagation();
+  const dropdown = document.getElementById('gameMenuDropdown');
+  if (!dropdown) return;
+  dropdown.classList.toggle('hidden');
+
+  // Close on outside click
+  if (!dropdown.classList.contains('hidden')) {
+    setTimeout(() => {
+      document.addEventListener('click', closeGameMenu, { once: true });
+    }, 0);
+  }
+}
+
+function closeGameMenu() {
+  const dropdown = document.getElementById('gameMenuDropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+}
+
 // ─── Game Actions ─────────────────────────────────────────
 
 async function undoTurn() {
   if (!currentGameId) return;
+  if (typeof AIPlayer !== 'undefined' && AIPlayer.isAnimating) return;
   try {
     const response = await fetch('/api/game/' + currentGameId + '/undo', { method: 'POST' });
     if (!response.ok) {
@@ -229,6 +374,18 @@ async function undoTurn() {
       return;
     }
     gameData = await response.json();
+
+    // In vs-computer mode, if we undid to the AI's turn, undo again to get back to human
+    if (gameData && gameData.playMode === 'vs-computer' && gameData.turns.length > 0) {
+      const current = gameData.players[gameData.currentPlayerIndex];
+      if (current && current.isAI) {
+        const response2 = await fetch('/api/game/' + currentGameId + '/undo', { method: 'POST' });
+        if (response2.ok) {
+          gameData = await response2.json();
+        }
+      }
+    }
+
     getGameModule().resetInput();
     renderGame();
   } catch (e) {
@@ -237,7 +394,9 @@ async function undoTurn() {
 }
 
 async function endGameEarly() {
-  if (!currentGameId || !confirm('End this game early?')) return;
+  if (!currentGameId) return;
+  const ok = await showConfirm('End Game', 'End this game early?', 'End Game');
+  if (!ok) return;
   try {
     const response = await fetch('/api/game/' + currentGameId + '/end', { method: 'POST' });
     if (!response.ok) return;
@@ -249,7 +408,9 @@ async function endGameEarly() {
 }
 
 async function deleteGame() {
-  if (!currentGameId || !confirm('Delete this game permanently?')) return;
+  if (!currentGameId) return;
+  const ok = await showConfirm('Delete Game', 'Delete this game permanently? This cannot be undone.', 'Delete');
+  if (!ok) return;
   try {
     await fetch('/api/game/' + currentGameId, { method: 'DELETE' });
     removeRecentGame(currentGameId);
@@ -354,54 +515,40 @@ function renderRecentGames() {
   `).join('');
 }
 
-// ─── WebSocket ────────────────────────────────────────────
+// ─── Socket.io ───────────────────────────────────────────
 
-function connectWebSocket() {
-  if (ws && ws.readyState === WebSocket.OPEN) return;
+function connectSocket() {
+  if (socket) return;
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(protocol + '//' + window.location.host);
+  socket = io();
 
-  ws.onopen = function() {
+  socket.on('connect', () => {
     updateConnectionStatus(true);
     if (currentGameId) {
-      ws.send(JSON.stringify({ type: 'subscribe', gameId: currentGameId }));
+      socket.emit('subscribe', currentGameId);
     }
-  };
+  });
 
-  ws.onmessage = function(event) {
-    try {
-      const message = JSON.parse(event.data);
-      if (message.type === 'gameUpdate' && message.gameId === currentGameId) {
-        if (message.data.deleted) {
-          showToast('Game has been deleted');
-          removeRecentGame(currentGameId);
-          leaveGame();
-        } else {
-          gameData = message.data;
-          renderGame();
-          showToast('Game updated');
-        }
-      }
-    } catch (e) {
-      // ignore
+  socket.on('gameUpdate', (data) => {
+    if (!currentGameId) return;
+    if (data.deleted) {
+      showToast('Game has been deleted');
+      removeRecentGame(currentGameId);
+      leaveGame();
+    } else {
+      gameData = data;
+      renderGame();
     }
-  };
+  });
 
-  ws.onclose = function() {
+  socket.on('disconnect', () => {
     updateConnectionStatus(false);
-    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-    wsReconnectTimer = setTimeout(connectWebSocket, 3000);
-  };
-
-  ws.onerror = function() {
-    updateConnectionStatus(false);
-  };
+  });
 }
 
 function subscribeToGame(gameId) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'subscribe', gameId }));
+  if (socket && socket.connected) {
+    socket.emit('subscribe', gameId);
   }
 }
 
@@ -409,8 +556,7 @@ function updateConnectionStatus(connected) {
   const el = document.getElementById('connectionStatus');
   if (!el) return;
   el.classList.toggle('connected', connected);
-  el.querySelector('.status-text').textContent = connected ? 'Connected' : 'Disconnected';
-  // Only show on game screen
+  el.querySelector('.status-text').textContent = connected ? 'Live' : 'Reconnecting...';
   el.style.display = currentGameId ? '' : 'none';
 }
 
@@ -450,7 +596,7 @@ async function handleRoute() {
     showLandingPage();
   }
 
-  updateConnectionStatus(ws && ws.readyState === WebSocket.OPEN);
+  updateConnectionStatus(socket && socket.connected);
 }
 
 window.addEventListener('hashchange', handleRoute);
@@ -458,7 +604,7 @@ window.addEventListener('hashchange', handleRoute);
 // ─── Init ─────────────────────────────────────────────────
 
 window.onload = function() {
-  connectWebSocket();
+  connectSocket();
   renderRecentGames();
   handleRoute();
 };

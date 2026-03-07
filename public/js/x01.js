@@ -100,6 +100,21 @@ const X01 = {
     }
 
     const currentPlayer = game.players[game.currentPlayerIndex];
+
+    // If AI's turn, show placeholder — AIPlayer module handles the rest
+    if (currentPlayer.isAI) {
+      document.getElementById('turnInput').innerHTML = `
+        <div class="dart-input-area ai-turn">
+          <div class="current-turn-info">
+            <span class="current-player-name">${escapeHtml(currentPlayer.name)}</span>
+            <span class="ai-badge">Virtual</span>
+          </div>
+          <div class="ai-thinking">Throwing...</div>
+        </div>
+      `;
+      return;
+    }
+
     const darts = this.currentDarts;
 
     // Dart pills

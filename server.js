@@ -1,20 +1,60 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
-const WebSocket = require('ws');
+const fs = require('fs');
+const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3007;
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = new Server(server);
 
 app.use(express.json());
+
+// No cache on sw.js so browser always checks for updates
+app.get('/sw.js', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory game storage
+// Game storage — persisted to disk
+const DATA_DIR = path.join(__dirname, 'data');
+const GAMES_FILE = path.join(DATA_DIR, 'games.json');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
 const games = new Map();
-const gameClients = new Map(); // gameId -> Set<WebSocket>
+
+// Load games from disk on startup
+function loadGames() {
+  try {
+    if (fs.existsSync(GAMES_FILE)) {
+      const data = JSON.parse(fs.readFileSync(GAMES_FILE, 'utf8'));
+      for (const [id, game] of Object.entries(data)) {
+        games.set(id, game);
+      }
+      console.log(`Loaded ${games.size} games from disk`);
+    }
+  } catch (e) {
+    console.error('Failed to load games:', e.message);
+  }
+}
+
+// Save games to disk
+function saveGames() {
+  try {
+    const obj = Object.fromEntries(games);
+    fs.writeFileSync(GAMES_FILE, JSON.stringify(obj));
+  } catch (e) {
+    console.error('Failed to save games:', e.message);
+  }
+}
+
+loadGames();
 
 // Generate 8-char game ID
 function generateGameId() {
@@ -24,17 +64,9 @@ function generateGameId() {
   return id;
 }
 
-// Broadcast game update to all subscribers
+// Broadcast game update to all subscribers in the room
 function broadcastGameUpdate(gameId, data) {
-  const clients = gameClients.get(gameId);
-  if (clients) {
-    const message = JSON.stringify({ type: 'gameUpdate', gameId, data });
-    clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
+  io.to(gameId).emit('gameUpdate', data);
 }
 
 // ─── Game Logic ───────────────────────────────────────────
@@ -406,30 +438,305 @@ function undoLastTurn(game) {
   return true;
 }
 
+// ─── AI Dart Generation ──────────────────────────────────
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+const VIRTUAL_NAMES = [
+  'Ace', 'Blaze', 'Chip', 'Dash', 'Edge', 'Finn', 'Hawk', 'Jazz',
+  'Knox', 'Lance', 'Max', 'Nash', 'Pike', 'Quinn', 'Rex', 'Slate',
+  'Troy', 'Vex', 'Wade', 'Zane', 'Arrow', 'Bolt', 'Colt', 'Duke',
+  'Flint', 'Griff', 'Hugo', 'Jax', 'Kane', 'Lucky', 'Maverick',
+  'Nix', 'Onyx', 'Phoenix', 'Rogue', 'Sage', 'Thorn', 'Viper', 'Wolf',
+];
+
+function randomVirtualName() {
+  return VIRTUAL_NAMES[Math.floor(Math.random() * VIRTUAL_NAMES.length)];
+}
+
+const AI_PROFILES = {
+  easy:         { x01Avg: 26, cricketHitRate: 0.30, cricketTripleRate: 0.03, cricketDoubleRate: 0.08, atcHitRate: 0.25, checkoutRate: 0.10 },
+  average:      { x01Avg: 42, cricketHitRate: 0.50, cricketTripleRate: 0.08, cricketDoubleRate: 0.15, atcHitRate: 0.45, checkoutRate: 0.25 },
+  hard:         { x01Avg: 60, cricketHitRate: 0.70, cricketTripleRate: 0.18, cricketDoubleRate: 0.22, atcHitRate: 0.65, checkoutRate: 0.45 },
+  professional: { x01Avg: 80, cricketHitRate: 0.85, cricketTripleRate: 0.30, cricketDoubleRate: 0.25, atcHitRate: 0.80, checkoutRate: 0.65 },
+};
+
+function makeDart(number, multiplier) {
+  const score = number * multiplier;
+  const prefixes = { 0: '', 1: '', 2: 'D', 3: 'T' };
+  let label;
+  if (number === 0) label = 'Miss';
+  else if (number === 25) label = multiplier === 2 ? 'D-Bull' : 'Bull';
+  else label = `${prefixes[multiplier]}${number}`;
+  return { number, multiplier, score, label };
+}
+
+function scoreToDart(targetScore) {
+  if (targetScore <= 0) return makeDart(0, 0);
+  if (targetScore === 50) return makeDart(25, 2);
+  if (targetScore === 25) return makeDart(25, 1);
+  // Try triple
+  if (targetScore % 3 === 0 && targetScore / 3 <= 20) return makeDart(targetScore / 3, 3);
+  // Try double
+  if (targetScore % 2 === 0 && targetScore / 2 <= 20) return makeDart(targetScore / 2, 2);
+  // Single
+  if (targetScore <= 20) return makeDart(targetScore, 1);
+  // Larger values: pick closest clean option
+  if (targetScore <= 40 && targetScore % 2 === 0) return makeDart(targetScore / 2, 2);
+  // Triple range
+  if (targetScore <= 60 && targetScore % 3 === 0) return makeDart(targetScore / 3, 3);
+  // Fallback: T20
+  return makeDart(20, 3);
+}
+
+function aiX01ScoringDart(profile) {
+  const perDartAvg = profile.x01Avg / 3;
+  // Generate score with variance around the per-dart average
+  const variance = (Math.random() - 0.5) * perDartAvg * 1.5;
+  const raw = Math.round(perDartAvg + variance);
+  const score = Math.max(0, Math.min(raw, 60));
+  return scoreToDart(score);
+}
+
+// Common double-out checkouts for AI
+const CHECKOUT_TABLE = {
+  170: [{ n: 20, m: 3 }, { n: 20, m: 3 }, { n: 25, m: 2 }],
+  164: [{ n: 20, m: 3 }, { n: 18, m: 3 }, { n: 25, m: 2 }],
+  160: [{ n: 20, m: 3 }, { n: 20, m: 3 }, { n: 20, m: 2 }],
+  // Single-dart finishes (doubles)
+};
+
+function aiX01CheckoutDart(remaining, profile, dartsLeft) {
+  // Direct double finish
+  if (remaining <= 40 && remaining % 2 === 0) {
+    if (Math.random() < profile.checkoutRate) {
+      return makeDart(remaining / 2, 2);
+    }
+    // Missed the double — hit single or miss
+    const r = Math.random();
+    if (r < 0.4) return makeDart(remaining / 2, 1); // hit single instead of double
+    if (r < 0.7) return makeDart(0, 0); // miss
+    const adj = Math.max(1, remaining / 2 + Math.floor(Math.random() * 5) - 2);
+    return makeDart(Math.min(adj, 20), 1);
+  }
+  // Double bull (50)
+  if (remaining === 50) {
+    if (Math.random() < profile.checkoutRate * 0.7) {
+      return makeDart(25, 2);
+    }
+    return Math.random() < 0.5 ? makeDart(25, 1) : makeDart(0, 0);
+  }
+  // Need to set up for a double — reduce to even number ≤40
+  if (dartsLeft > 1 && remaining <= 60) {
+    const setupTarget = remaining - (remaining % 2 === 0 ? 0 : 1);
+    // Aim to leave a double-able number
+    if (remaining % 2 === 1) {
+      // Hit a single odd number to leave even
+      const single = Math.min(remaining - 2, 19);
+      if (single > 0 && Math.random() < profile.checkoutRate + 0.3) {
+        return makeDart(single, 1);
+      }
+    }
+  }
+  // Default: throw a scoring dart that won't bust
+  return aiX01SafeDart(remaining, profile);
+}
+
+function aiX01SafeDart(remaining, profile) {
+  // Throw a scoring dart but don't exceed remaining
+  const maxSafe = remaining - 2; // leave at least 2 for a double
+  if (maxSafe <= 0) return makeDart(0, 0);
+  const dart = aiX01ScoringDart(profile);
+  if (dart.score > maxSafe) {
+    // Tone it down
+    return scoreToDart(Math.min(Math.floor(maxSafe * 0.5), 20));
+  }
+  return dart;
+}
+
+function generateAIX01Darts(game, player, difficulty) {
+  const profile = AI_PROFILES[difficulty];
+  const darts = [];
+  let remaining = player.remaining;
+  const doubleOut = game.settings.doubleOut;
+
+  for (let i = 0; i < 3; i++) {
+    if (remaining <= 0) {
+      darts.push(makeDart(0, 0));
+      continue;
+    }
+
+    let dart;
+    const dartsLeft = 3 - i;
+
+    if (doubleOut && remaining <= 170) {
+      dart = aiX01CheckoutDart(remaining, profile, dartsLeft);
+    } else if (!doubleOut && remaining <= 60) {
+      // Straight out — just try to hit the number
+      if (Math.random() < profile.checkoutRate) {
+        dart = scoreToDart(remaining);
+      } else {
+        dart = aiX01ScoringDart(profile);
+      }
+    } else {
+      dart = aiX01ScoringDart(profile);
+    }
+
+    // Bust check for double-out: don't let AI go to 1 or below 0
+    if (doubleOut) {
+      const newRem = remaining - dart.score;
+      if (newRem < 0 || newRem === 1) {
+        dart = makeDart(0, 0); // miss instead of busting
+      }
+    } else {
+      if (remaining - dart.score < 0) {
+        dart = makeDart(0, 0);
+      }
+    }
+
+    remaining -= dart.score;
+    darts.push(dart);
+  }
+
+  return darts;
+}
+
+function generateAICricketDarts(game, player, difficulty) {
+  const profile = AI_PROFILES[difficulty];
+  const darts = [];
+
+  // Strategy: close highest unclosed numbers first, then score points
+  const unclosed = game.numbers.filter(n => player.marks[n] < 3).sort((a, b) => b - a);
+  const scoreable = game.numbers.filter(n => {
+    if (player.marks[n] < 3) return false;
+    return game.players.some(p => !p.isAI && p.marks[n] < 3);
+  }).sort((a, b) => b - a);
+
+  const targets = unclosed.length > 0 ? unclosed : scoreable;
+
+  for (let i = 0; i < 3; i++) {
+    const target = targets[i % targets.length] || game.numbers[0];
+
+    if (Math.random() < profile.cricketHitRate) {
+      // Hit the target
+      let mult = 1;
+      if (target !== 25) {
+        const r = Math.random();
+        if (r < profile.cricketTripleRate) mult = 3;
+        else if (r < profile.cricketTripleRate + profile.cricketDoubleRate) mult = 2;
+      } else {
+        mult = Math.random() < profile.cricketDoubleRate ? 2 : 1;
+      }
+      const prefixes = { 1: '', 2: 'D', 3: 'T' };
+      const label = target === 25
+        ? (mult === 2 ? 'D-Bull' : 'Bull')
+        : `${prefixes[mult]}${target}`;
+      darts.push({ number: target, multiplier: mult, label });
+    } else {
+      // Miss — either hit a random cricket number or miss entirely
+      if (Math.random() < 0.35) {
+        const rn = game.numbers[Math.floor(Math.random() * game.numbers.length)];
+        const label = rn === 25 ? 'Bull' : `${rn}`;
+        darts.push({ number: rn, multiplier: 1, label });
+      } else {
+        darts.push({ number: 0, multiplier: 0, label: 'Miss' });
+      }
+    }
+  }
+
+  return darts;
+}
+
+function generateAIATCDarts(game, player, difficulty) {
+  const profile = AI_PROFILES[difficulty];
+  const darts = [];
+  let target = player.currentTarget;
+
+  for (let i = 0; i < 3; i++) {
+    if (target > game.maxTarget) {
+      darts.push({ hit: false });
+      continue;
+    }
+    const hit = Math.random() < profile.atcHitRate;
+    darts.push({ hit });
+    if (hit) target++;
+  }
+
+  return darts;
+}
+
+function generateAIDarts(game, difficulty) {
+  const player = game.players[game.currentPlayerIndex];
+  switch (game.gameType) {
+    case 'x01': return generateAIX01Darts(game, player, difficulty);
+    case 'cricket': return generateAICricketDarts(game, player, difficulty);
+    case 'around-the-clock': return generateAIATCDarts(game, player, difficulty);
+    default: return [];
+  }
+}
+
 // ─── API Routes ───────────────────────────────────────────
 
 // Create new game
 app.post('/api/game/new', (req, res) => {
-  const { gameType, playerNames, settings } = req.body;
+  const { gameType, playerNames, settings, playMode, aiDifficulty } = req.body;
 
   if (!gameType || !playerNames || !Array.isArray(playerNames)) {
     return res.status(400).json({ error: 'gameType and playerNames required' });
   }
-  if (playerNames.length < 2 || playerNames.length > 8) {
-    return res.status(400).json({ error: '2-8 players required' });
+
+  const mode = playMode || 'multiplayer';
+  const validModes = ['multiplayer', 'solo', 'vs-computer'];
+  if (!validModes.includes(mode)) {
+    return res.status(400).json({ error: 'Invalid play mode' });
   }
+
+  if (mode === 'solo') {
+    if (playerNames.length !== 1) {
+      return res.status(400).json({ error: 'Solo mode requires exactly 1 player' });
+    }
+  } else if (mode === 'vs-computer') {
+    if (playerNames.length !== 1) {
+      return res.status(400).json({ error: 'vs Computer mode requires exactly 1 player name' });
+    }
+    const validDiffs = ['easy', 'average', 'hard', 'professional'];
+    if (aiDifficulty && !validDiffs.includes(aiDifficulty)) {
+      return res.status(400).json({ error: 'Invalid AI difficulty' });
+    }
+  } else {
+    if (playerNames.length < 2 || playerNames.length > 8) {
+      return res.status(400).json({ error: '2-8 players required' });
+    }
+  }
+
   const validTypes = ['x01', 'cricket', 'around-the-clock'];
   if (!validTypes.includes(gameType)) {
     return res.status(400).json({ error: 'Invalid game type' });
   }
 
+  // For vs-computer, add virtual player with random name
+  const diff = aiDifficulty || 'average';
+  const virtualName = mode === 'vs-computer' ? randomVirtualName() : null;
+  const finalPlayerNames = mode === 'vs-computer'
+    ? [...playerNames, virtualName]
+    : playerNames;
+
   let gameId;
   do { gameId = generateGameId(); } while (games.has(gameId));
 
   try {
-    const gameData = createGame(gameType, playerNames, settings || {});
+    const gameData = createGame(gameType, finalPlayerNames, settings || {});
     gameData.gameId = gameId;
+    gameData.playMode = mode;
+    gameData.aiDifficulty = mode === 'vs-computer' ? diff : null;
+
+    // Mark AI player
+    if (mode === 'vs-computer') {
+      gameData.players[1].isAI = true;
+    }
+
     games.set(gameId, gameData);
+    saveGames();
     res.json(gameData);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -461,10 +768,25 @@ app.post('/api/game/:gameId/throw', (req, res) => {
       case 'around-the-clock': processAroundTheClockTurn(game, playerId, darts); break;
     }
     broadcastGameUpdate(req.params.gameId, game);
+    saveGames();
     res.json(game);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// Generate AI darts (returns darts without processing the turn)
+app.post('/api/game/:gameId/ai-turn', (req, res) => {
+  const game = games.get(req.params.gameId);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  if (!game.gameActive) return res.status(400).json({ error: 'Game is over' });
+  if (game.playMode !== 'vs-computer') return res.status(400).json({ error: 'Not a vs-computer game' });
+
+  const currentPlayer = game.players[game.currentPlayerIndex];
+  if (!currentPlayer.isAI) return res.status(400).json({ error: 'Not AI turn' });
+
+  const darts = generateAIDarts(game, game.aiDifficulty || 'average');
+  res.json({ darts });
 });
 
 // Undo last turn
@@ -477,6 +799,7 @@ app.post('/api/game/:gameId/undo', (req, res) => {
   }
 
   broadcastGameUpdate(req.params.gameId, game);
+  saveGames();
   res.json(game);
 });
 
@@ -527,6 +850,7 @@ app.post('/api/game/:gameId/end', (req, res) => {
   }
 
   broadcastGameUpdate(req.params.gameId, game);
+  saveGames();
   res.json(game);
 });
 
@@ -536,12 +860,8 @@ app.delete('/api/game/:gameId', (req, res) => {
   if (!games.has(gameId)) return res.status(404).json({ error: 'Game not found' });
 
   games.delete(gameId);
+  saveGames();
   broadcastGameUpdate(gameId, { deleted: true });
-
-  // Clean up subscribers
-  if (gameClients.has(gameId)) {
-    gameClients.delete(gameId);
-  }
 
   res.json({ ok: true });
 });
@@ -551,42 +871,13 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ─── WebSocket ────────────────────────────────────────────
+// ─── Socket.io ───────────────────────────────────────────
 
-wss.on('connection', (ws) => {
-  let currentGameId = null;
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-
-      if (data.type === 'subscribe' && data.gameId) {
-        // Unsubscribe from previous
-        if (currentGameId && gameClients.has(currentGameId)) {
-          gameClients.get(currentGameId).delete(ws);
-          if (gameClients.get(currentGameId).size === 0) {
-            gameClients.delete(currentGameId);
-          }
-        }
-
-        currentGameId = data.gameId;
-        if (!gameClients.has(currentGameId)) {
-          gameClients.set(currentGameId, new Set());
-        }
-        gameClients.get(currentGameId).add(ws);
-      }
-    } catch (e) {
-      // ignore parse errors
-    }
-  });
-
-  ws.on('close', () => {
-    if (currentGameId && gameClients.has(currentGameId)) {
-      gameClients.get(currentGameId).delete(ws);
-      if (gameClients.get(currentGameId).size === 0) {
-        gameClients.delete(currentGameId);
-      }
-    }
+io.on('connection', (socket) => {
+  socket.on('subscribe', (gameId) => {
+    // Leave all previous game rooms (keep socket's own room)
+    socket.rooms.forEach(r => { if (r !== socket.id) socket.leave(r); });
+    socket.join(gameId);
   });
 });
 
@@ -594,15 +885,17 @@ wss.on('connection', (ws) => {
 
 setInterval(() => {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let changed = false;
   for (const [gameId, game] of games) {
     const lastActivity = game.turns.length > 0
       ? new Date(game.turns[game.turns.length - 1].timestamp).getTime()
       : new Date(game.createdAt).getTime();
     if (lastActivity < cutoff) {
       games.delete(gameId);
-      if (gameClients.has(gameId)) gameClients.delete(gameId);
+      changed = true;
     }
   }
+  if (changed) saveGames();
 }, 60 * 60 * 1000); // Check hourly
 
 // ─── Start ────────────────────────────────────────────────
