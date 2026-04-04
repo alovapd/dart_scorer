@@ -1054,6 +1054,42 @@ async function confirmCancelFromFaq() {
   }, 5000);
 }
 
+// ─── Zoom Control ────────────────────────────────────────
+
+function toggleZoomSlider() {
+  const popup = document.getElementById('zoomSliderPopup');
+  popup.classList.toggle('hidden');
+}
+
+function applyZoom(value) {
+  const zoom = parseInt(value);
+  document.body.style.zoom = zoom / 100;
+  document.getElementById('zoomValue').textContent = zoom + '%';
+  localStorage.setItem('dart_scorer_zoom', zoom);
+}
+
+// Load saved zoom on startup
+(function initZoom() {
+  const saved = localStorage.getItem('dart_scorer_zoom');
+  if (saved) {
+    const zoom = parseInt(saved);
+    document.body.style.zoom = zoom / 100;
+    const slider = document.getElementById('zoomSlider');
+    const label = document.getElementById('zoomValue');
+    if (slider) slider.value = zoom;
+    if (label) label.textContent = zoom + '%';
+  }
+})();
+
+// Close zoom popup when tapping elsewhere
+document.addEventListener('click', function(e) {
+  const control = document.getElementById('zoomControl');
+  const popup = document.getElementById('zoomSliderPopup');
+  if (control && popup && !control.contains(e.target)) {
+    popup.classList.add('hidden');
+  }
+});
+
 // ─── Force Refresh (PWA) ─────────────────────────────────
 
 async function forceRefresh() {

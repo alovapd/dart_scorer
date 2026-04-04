@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'darts-v51';
+const CACHE_VERSION = 'darts-v56';
 
 // Install: cache nothing — we use network-first
 self.addEventListener('install', () => self.skipWaiting());

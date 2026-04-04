@@ -13,6 +13,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Darts">
 
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
@@ -503,6 +506,17 @@
       <div class="modal-body" id="accountModalBody">
         <div class="loading-text">Loading...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- ─── Zoom Control ────────────────────── -->
+  <div class="zoom-control" id="zoomControl">
+    <button class="zoom-toggle" onclick="toggleZoomSlider()" title="Adjust screen size">Aa</button>
+    <div class="zoom-slider-popup hidden" id="zoomSliderPopup">
+      <span class="zoom-label">Screen Size</span>
+      <input type="range" id="zoomSlider" min="80" max="150" value="100" step="5" oninput="applyZoom(this.value)">
+      <span class="zoom-value" id="zoomValue">100%</span>
+      <button class="zoom-reset" onclick="applyZoom(100); document.getElementById('zoomSlider').value=100;">Reset</button>
     </div>
   </div>
 

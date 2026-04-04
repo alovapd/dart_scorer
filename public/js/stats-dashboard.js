@@ -63,13 +63,35 @@ function renderStats(data) {
 
   // No stats yet
   if (!data.x01 && !data.cricket && !data.atc) {
-    html += `
-      <div class="stats-empty">
-        <p>No games recorded yet. Play some games and your stats will appear here!</p>
-      </div>
-    `;
-    content.innerHTML = html;
-    return;
+    if (isPro) {
+      html += `
+        <div class="stats-empty">
+          <p>No games recorded yet. Play some games and your stats will appear here!</p>
+        </div>
+      `;
+      content.innerHTML = html;
+      return;
+    } else {
+      // Free user with no games — show Pro upgrade prompt
+      html += `
+        <div class="stats-section stats-pro-wall" style="position:relative;">
+          <div class="stats-empty" style="filter:blur(3px);opacity:0.4;pointer-events:none;">
+            <p>Your detailed stats, game history, and improvement insights will appear here.</p>
+          </div>
+          <div class="stats-pro-wall-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;">
+            <div class="stats-pro-wall-cta">
+              <span class="pro-badge" style="font-size:0.85rem;padding:0.3rem 0.6rem;">PRO</span>
+              <h3>Unlock Your Full Stats</h3>
+              <p>Play games and upgrade to Pro to see detailed averages, game history, personalized insights, and improvement trends.</p>
+              <button class="btn btn-accent" onclick="showUpgradeModal()">Start Free Trial</button>
+              <p class="stats-locked-price">7 days free, then $5.99/month or $49.99/year</p>
+            </div>
+          </div>
+        </div>
+      `;
+      content.innerHTML = html;
+      return;
+    }
   }
 
   // === Pro-locked section: detailed stats, trends, game history ===
