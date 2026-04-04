@@ -168,6 +168,7 @@ const DartAnnouncer = {
   },
 
   _cancelAndSpeak(text, options = {}) {
+    if (typeof isProLoggedIn === 'function' && (!isProLoggedIn() || proUser.tier !== 'pro')) return;
     if (this._muted || !text || !window.speechSynthesis) return;
     speechSynthesis.cancel();
     speechSynthesis.speak(this._makeUtterance(text, options));
@@ -175,6 +176,7 @@ const DartAnnouncer = {
 
   // Queue without canceling — waits for current speech to finish first
   _queueSpeak(text, options = {}) {
+    if (typeof isProLoggedIn === 'function' && (!isProLoggedIn() || proUser.tier !== 'pro')) return;
     if (this._muted || !text || !window.speechSynthesis) return;
     speechSynthesis.speak(this._makeUtterance(text, options));
   },
@@ -199,8 +201,8 @@ const DartAnnouncer = {
     }
   },
 
-  // Cricket: per-dart announcement
-  announceCricketDart(label) {
+  // Per-dart announcement (used by X01, Cricket, etc.)
+  announceDart(label) {
     if (!label) return;
     // Parse the label to get the correct phrase
     let text;
@@ -254,6 +256,7 @@ const DartAnnouncer = {
 
   // Victory fanfare via Web Audio API
   playVictoryFanfare() {
+    if (typeof isProLoggedIn === 'function' && (!isProLoggedIn() || proUser.tier !== 'pro')) return;
     try {
       const ctx = DartSounds._getContext();
       if (ctx.state === 'suspended') ctx.resume();

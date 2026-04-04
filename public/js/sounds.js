@@ -298,6 +298,7 @@ const DartSounds = {
   },
 
   playSound(soundId) {
+    if (typeof isProLoggedIn === 'function' && (!isProLoggedIn() || proUser.tier !== 'pro')) return;
     const sound = this.SOUNDS.find(s => s.id === soundId);
     if (!sound || soundId === 'none') return;
     try {

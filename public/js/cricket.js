@@ -324,7 +324,7 @@ const Cricket = {
     for (const d of this._darts) {
       if (d && d.number === number) pendingMarks += d.multiplier;
     }
-    DartAnnouncer.announceCricketDart(label);
+    DartAnnouncer.announceDart(label);
     if (baseMarks + pendingMarks - mult < 3 && baseMarks + pendingMarks >= 3) {
       DartAnnouncer.announceCricketClose(number);
     }
@@ -363,7 +363,7 @@ const Cricket = {
     if (!this._darts.includes(null)) return;
     this._darts[this._activeDart] = { number: 0, multiplier: 0, label: 'Miss' };
     DartSounds.playForCurrentPlayer();
-    DartAnnouncer.announceCricketDart('Miss');
+    DartAnnouncer.announceDart('Miss');
     this._selectedMult = 1;
 
     const nextEmpty = this._darts.findIndex(d => d === null);
@@ -424,11 +424,10 @@ const Cricket = {
           <button class="multiplier-btn ${mult === 1 ? 'selected' : ''}" onclick="Cricket.setMult(1)">S</button>
           <button class="multiplier-btn ${mult === 2 ? 'selected' : ''}" onclick="Cricket.setMult(2)">D</button>
           <button class="multiplier-btn ${mult === 3 ? 'selected' : ''}" onclick="Cricket.setMult(3)">T</button>
+          <button class="multiplier-btn miss-btn" onclick="Cricket.addMiss()" ${!hasEmpty ? 'disabled' : ''}>Miss</button>
         </div>
         <div class="turn-bar-actions">
           <button class="btn btn-secondary btn-small" onclick="Cricket.undoDart()" ${!anyFilled ? 'disabled' : ''}>Undo</button>
-          <button class="btn btn-secondary btn-small" onclick="Cricket.addMiss()" ${!hasEmpty ? 'disabled' : ''} style="border-color:var(--danger);color:var(--danger)">Miss</button>
-          <button class="btn btn-primary btn-small" onclick="Cricket.submitTurn()" ${!anyFilled ? 'disabled' : ''}>Submit</button>
         </div>
       </div>
     `;

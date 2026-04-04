@@ -197,6 +197,7 @@ const X01 = {
 
     this.currentDarts.push({ number, multiplier: mult, score, label });
     DartSounds.playForCurrentPlayer();
+    DartAnnouncer.announceDart(label);
 
     // Auto-submit if 3 darts or if player just won
     if (typeof gameData !== 'undefined') {
@@ -211,6 +212,7 @@ const X01 = {
     if (this.currentDarts.length >= 3) return;
     this.currentDarts.push({ number: 0, multiplier: 0, score: 0, label: 'Miss' });
     DartSounds.playForCurrentPlayer();
+    DartAnnouncer.announceDart('Miss');
     if (typeof gameData !== 'undefined') this.renderTurnInput(gameData);
   },
 

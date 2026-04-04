@@ -111,7 +111,7 @@ const AIPlayer = {
         const revealedDart = darts[i - 1];
         if (gameData.gameType === 'cricket') {
           const dartLabel = this.getDartLabel(revealedDart);
-          DartAnnouncer.announceCricketDart(dartLabel);
+          DartAnnouncer.announceDart(dartLabel);
 
           // Check if this dart closed the number
           if (revealedDart.number && revealedDart.number !== 0) {

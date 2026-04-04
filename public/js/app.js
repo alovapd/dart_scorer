@@ -59,33 +59,65 @@ function showLandingPage() {
   document.getElementById('landingPage').classList.remove('hidden');
   document.getElementById('setupScreen').classList.add('hidden');
   document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('statsPage').classList.add('hidden');
+  document.getElementById('prefsPage').classList.add('hidden');
+  document.getElementById('faqPage').classList.add('hidden');
   window.location.hash = '';
   renderRecentGames();
+  renderAccountBanner();
 }
 
 function showSetupScreen() {
   document.getElementById('landingPage').classList.add('hidden');
   document.getElementById('setupScreen').classList.remove('hidden');
   document.getElementById('gameScreen').classList.add('hidden');
-  selectedGameType = 'x01';
-  playerCount = 2;
-  selectedPlayMode = 'multiplayer';
+  // Apply saved defaults from preferences
+  selectedGameType = (userPrefs && userPrefs.defaultGameType) || 'x01';
+  const loggedIn = isProLoggedIn();
+  playerCount = loggedIn ? 2 : 1;
+  selectedPlayMode = loggedIn ? 'multiplayer' : 'solo';
   selectedDifficulty = 'average';
-  // Reset play mode button states
+  // Gate play modes — anonymous users only get Solo
   document.querySelectorAll('.play-mode-btn').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.mode === 'multiplayer');
+    const mode = btn.dataset.mode;
+    if (!loggedIn && mode !== 'solo') {
+      btn.classList.add('locked-mode');
+      btn.classList.remove('selected');
+    } else {
+      btn.classList.remove('locked-mode');
+      btn.classList.toggle('selected', btn.dataset.mode === selectedPlayMode);
+    }
   });
   document.querySelectorAll('.difficulty-btn').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.diff === 'average');
   });
+  // Reset game type button states to match preference
+  document.querySelectorAll('.game-type-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.type === selectedGameType);
+  });
   document.getElementById('aiDifficultyCard').classList.add('hidden');
   renderSetup();
+  // Apply default X01 settings from preferences
+  if (userPrefs && selectedGameType === 'x01') {
+    const startScoreSelect = document.getElementById('settingStartScore');
+    if (startScoreSelect && userPrefs.defaultStartScore) {
+      startScoreSelect.value = userPrefs.defaultStartScore;
+    }
+    const doubleOutToggle = document.getElementById('settingDoubleOut');
+    if (doubleOutToggle && userPrefs.defaultDoubleOut !== undefined) {
+      doubleOutToggle.checked = userPrefs.defaultDoubleOut;
+    }
+  }
 }
 
 function showGameScreen() {
   document.getElementById('landingPage').classList.add('hidden');
   document.getElementById('setupScreen').classList.add('hidden');
   document.getElementById('gameScreen').classList.remove('hidden');
+
+  // Hide announcer controls for non-Pro
+  const isPro = isProLoggedIn() && proUser.tier === 'pro';
+  document.getElementById('muteToggleBtn').style.display = isPro ? '' : 'none';
 }
 
 // ─── Setup Screen ─────────────────────────────────────────
@@ -99,6 +131,12 @@ function selectGameType(type) {
 }
 
 function selectPlayMode(mode) {
+  // Block non-account users from multiplayer and vs-computer
+  if (!isProLoggedIn() && mode !== 'solo') {
+    const modeNames = { 'multiplayer': 'Multiplayer', 'vs-computer': 'vs Virtual Opponents' };
+    showAuthModal('register', `${modeNames[mode] || 'This mode'} requires a free account. Sign up to play with friends, join games, and challenge virtual opponents.`);
+    return;
+  }
   selectedPlayMode = mode;
   document.querySelectorAll('.play-mode-btn').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.mode === mode);
@@ -140,6 +178,14 @@ function renderPlayerInputs() {
 
   const sounds = DartSounds.getSoundList();
   const defaultSound = sounds[0]; // Classic Thud
+  const showSounds = isProLoggedIn() && proUser.tier === 'pro';
+  const defaultName = isProLoggedIn() ? proUser.displayName : '';
+
+  const soundBtnHtml = (player, idx, sound) => showSounds
+    ? `<button class="sound-picker-btn" data-player="${player}" data-sound-index="${idx}" onclick="openSoundPicker(${typeof player === 'string' ? "'" + player + "'" : player})" title="Dart sound">
+        ${sound.emoji} <span class="sound-name">${sound.name}</span>
+      </button>`
+    : '';
 
   if (selectedPlayMode === 'solo' || selectedPlayMode === 'vs-computer') {
     // Find the 'whoosh' sound for virtual player default
@@ -150,18 +196,14 @@ function renderPlayerInputs() {
     container.innerHTML = `
       <div class="player-input-row">
         <span class="player-number">1</span>
-        <input type="text" class="input player-name-input" placeholder="Your Name" maxlength="30" />
-        <button class="sound-picker-btn" data-player="1" data-sound-index="0" onclick="openSoundPicker(1)" title="Dart sound">
-          ${defaultSound.emoji} <span class="sound-name">${defaultSound.name}</span>
-        </button>
+        <input type="text" class="input player-name-input" placeholder="Your Name" maxlength="30" value="${escapeHtml(defaultName)}" />
+        ${soundBtnHtml(1, 0, defaultSound)}
       </div>
       ${selectedPlayMode === 'vs-computer' ? `
         <div class="player-input-row virtual-sound-row">
           <span class="player-number">VS</span>
           <span class="input virtual-player-placeholder">Virtual Opponent</span>
-          <button class="sound-picker-btn" data-player="virtual" data-sound-index="${virtualIdx}" onclick="openSoundPicker('virtual')" title="Virtual player sound">
-            ${virtualDefault.emoji} <span class="sound-name">${virtualDefault.name}</span>
-          </button>
+          ${soundBtnHtml('virtual', virtualIdx, virtualDefault)}
         </div>
       ` : ''}
     `;
@@ -174,10 +216,8 @@ function renderPlayerInputs() {
     html += `
       <div class="player-input-row">
         <span class="player-number">${i}</span>
-        <input type="text" class="input player-name-input" placeholder="Player ${i}" maxlength="30" />
-        <button class="sound-picker-btn" data-player="${i}" data-sound-index="0" onclick="openSoundPicker(${i})" title="Dart sound">
-          ${defaultSound.emoji} <span class="sound-name">${defaultSound.name}</span>
-        </button>
+        <input type="text" class="input player-name-input" placeholder="Player ${i}" maxlength="30" ${i === 1 ? `value="${escapeHtml(defaultName)}"` : ''} />
+        ${soundBtnHtml(i, 0, defaultSound)}
         ${playerCount > 2 ? `<button class="remove-player-btn" onclick="removePlayer(${i})">&times;</button>` : ''}
       </div>
     `;
@@ -398,9 +438,11 @@ async function startGame() {
   }
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (proToken) headers['Authorization'] = 'Bearer ' + proToken;
     const response = await fetch('/api/game/new', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -424,7 +466,7 @@ async function startGame() {
       if (player.isAI) {
         player.soundId = virtualSoundId;
       } else {
-        player.soundId = soundSelections[i] || 'thud';
+        player.soundId = soundSelections[i] || (userPrefs && userPrefs.dartSound) || 'thud';
       }
       DartSounds.setPlayerSound(player.id, player.soundId);
     });
@@ -485,9 +527,15 @@ function renderGame() {
         DartAnnouncer.playVictoryFanfare();
       }
     }
+    // Show post-game pro prompt
+    if (!renderGame._proPromptShown) {
+      renderGame._proPromptShown = true;
+      showPostGamePrompt(gameData);
+    }
   } else {
     banner.classList.add('hidden');
     renderGame._winnerAnnounced = null;
+    renderGame._proPromptShown = false;
   }
 
   // Announce turn change
@@ -533,9 +581,29 @@ function renderGame() {
     }
   }
 
-  // Turn history
-  const historyHtml = module.renderHistory(gameData);
-  document.getElementById('turnHistory').innerHTML = historyHtml;
+  // Turn history (Pro only)
+  const historyContainer = document.getElementById('turnHistory');
+  const isPro = isProLoggedIn() && proUser.tier === 'pro';
+  if (isPro) {
+    historyContainer.innerHTML = module.renderHistory(gameData);
+    historyContainer.className = 'turn-history';
+  } else {
+    const historyHtml = module.renderHistory(gameData);
+    if (historyHtml && historyHtml.trim()) {
+      historyContainer.className = 'turn-history';
+      historyContainer.innerHTML = `
+        <div class="turn-history-locked">
+          <div class="turn-history-locked-inner">${historyHtml}</div>
+          <div class="turn-history-locked-overlay">
+            <span class="pro-badge">PRO</span>
+            <span>Turn history</span>
+          </div>
+        </div>
+      `;
+    } else {
+      historyContainer.innerHTML = '';
+    }
+  }
 
   // Check if AI needs to take a turn
   if (typeof AIPlayer !== 'undefined') {
@@ -556,12 +624,13 @@ function getGameModule() {
 // ─── Game Menu (kebab) ───────────────────────────────────
 
 function getGameMenuButtonHTML() {
+  const isPro = isProLoggedIn() && proUser.tier === 'pro';
   return `
     <div class="game-menu-inline">
       <button class="game-menu-toggle" onclick="toggleGameMenu(event)" title="Game options">&#8942;</button>
       <div class="game-menu-dropdown hidden" id="gameMenuDropdown">
         <button onclick="undoTurn(); closeGameMenu();">Undo Last</button>
-        <button onclick="openVoicePicker(); closeGameMenu();">Announcer Voice</button>
+        ${isPro ? '<button onclick="openVoicePicker(); closeGameMenu();">Announcer Voice</button>' : ''}
         <button onclick="endGameEarly(); closeGameMenu();">End Game</button>
         <button class="danger" onclick="deleteGame(); closeGameMenu();">Delete Game</button>
       </div>
@@ -692,9 +761,12 @@ document.getElementById('rulesModal').addEventListener('click', function(e) {
   if (e.target === this) hideRulesModal();
 });
 
-// ─── Recent Games (localStorage) ──────────────────────────
+// ─── Recent Games (localStorage + server sync) ───────────
 
-function getRecentGames() {
+// Cache for server-fetched recent games
+let _serverRecentGames = null;
+
+function getRecentGamesLocal() {
   try {
     return JSON.parse(localStorage.getItem('dart_scorer_recent')) || [];
   } catch (e) {
@@ -702,8 +774,17 @@ function getRecentGames() {
   }
 }
 
+function getRecentGames() {
+  // If we have server-synced games, use those
+  if (isProLoggedIn() && _serverRecentGames !== null) {
+    return _serverRecentGames;
+  }
+  return getRecentGamesLocal();
+}
+
 function saveRecentGame(gameId, game) {
-  const recent = getRecentGames().filter(g => g.gameId !== gameId);
+  // Always save to localStorage
+  const recent = getRecentGamesLocal().filter(g => g.gameId !== gameId);
   recent.unshift({
     gameId,
     gameType: game.gameType,
@@ -711,11 +792,74 @@ function saveRecentGame(gameId, game) {
     lastVisited: new Date().toISOString(),
   });
   localStorage.setItem('dart_scorer_recent', JSON.stringify(recent.slice(0, 10)));
+
+  // Also save to server if logged in
+  if (isProLoggedIn()) {
+    proFetch('/api/stats/recent', {
+      method: 'POST',
+      body: JSON.stringify({
+        gameId,
+        gameType: game.gameType,
+        players: game.players.map(p => p.name),
+      }),
+    }).catch(() => {}); // Silent fail
+  }
 }
 
 function removeRecentGame(gameId) {
-  const recent = getRecentGames().filter(g => g.gameId !== gameId);
+  const recent = getRecentGamesLocal().filter(g => g.gameId !== gameId);
   localStorage.setItem('dart_scorer_recent', JSON.stringify(recent));
+
+  if (isProLoggedIn()) {
+    proFetch('/api/stats/recent/' + gameId, { method: 'DELETE' }).catch(() => {});
+  }
+}
+
+// Fetch recent games from server (called after login and on init)
+async function syncRecentGames() {
+  if (!isProLoggedIn()) {
+    _serverRecentGames = null;
+    return;
+  }
+  try {
+    const res = await proFetch('/api/stats/recent');
+    if (res.ok) {
+      const data = await res.json();
+      _serverRecentGames = data.games;
+
+      // Also push any local-only games to server
+      const localGames = getRecentGamesLocal();
+      const serverIds = new Set(_serverRecentGames.map(g => g.gameId));
+      for (const lg of localGames) {
+        if (!serverIds.has(lg.gameId)) {
+          proFetch('/api/stats/recent', {
+            method: 'POST',
+            body: JSON.stringify(lg),
+          }).catch(() => {});
+        }
+      }
+
+      renderRecentGames();
+    }
+  } catch (e) {
+    // Fall back to localStorage
+  }
+}
+
+function renderAccountBanner() {
+  const loggedIn = isProLoggedIn();
+  const isPro = loggedIn && proUser.tier === 'pro';
+
+  // CSS handles hiding/showing accountBanner, proBanner, multiplayerTeaser, joinGameCard
+  // based on is-logged-in class. We just need to show/hide the pro banner for pro vs free.
+  const proBanner = document.getElementById('proBanner');
+  if (loggedIn) {
+    document.getElementById('joinGameCard').style.display = '';
+    proBanner.style.display = isPro ? 'none' : '';
+  } else {
+    document.getElementById('accountBanner').style.display = '';
+    document.getElementById('multiplayerTeaser').style.display = '';
+  }
 }
 
 function renderRecentGames() {
@@ -729,10 +873,11 @@ function renderRecentGames() {
   }
 
   section.style.display = '';
+  const isPro = isProLoggedIn() && proUser.tier === 'pro';
   const typeNames = { 'x01': 'X01', 'cricket': 'Cricket', 'around-the-clock': 'Around the Clock' };
 
-  list.innerHTML = recent.map(g => `
-    <li onclick="window.location.hash='/game/${escapeHtml(g.gameId)}'">
+  const listHtml = recent.map(g => `
+    <li ${isPro ? `onclick="window.location.hash='/game/${escapeHtml(g.gameId)}'"` : ''}>
       <div class="recent-game-info">
         <div class="recent-game-type">${typeNames[g.gameType] || g.gameType}</div>
         <div class="recent-game-players">${g.players.map(n => escapeHtml(n)).join(', ')}</div>
@@ -740,6 +885,25 @@ function renderRecentGames() {
       <span class="recent-game-code">${escapeHtml(g.gameId)}</span>
     </li>
   `).join('');
+
+  if (isPro) {
+    list.innerHTML = listHtml;
+    list.className = 'recent-games-list';
+  } else {
+    list.className = 'recent-games-list';
+    list.innerHTML = `
+      <div class="recent-games-locked">
+        <div class="recent-games-locked-inner">${listHtml}</div>
+        <div class="recent-games-locked-overlay">
+          <span class="pro-badge">PRO</span>
+          <p>Access your game history across all devices</p>
+          <button class="btn btn-small btn-accent" onclick="${isProLoggedIn() ? 'showUpgradeModal()' : "showAuthModal('register')"}">
+            ${isProLoggedIn() ? 'Upgrade to Pro' : 'Create Free Account'}
+          </button>
+        </div>
+      </div>
+    `;
+  }
 }
 
 // ─── Socket.io ───────────────────────────────────────────
@@ -836,10 +1000,128 @@ window.onload = function() {
   DartAnnouncer.init();
   connectSocket();
   renderRecentGames();
+  renderUserBar();
+  renderAccountBanner();
+  refreshProUser();
+  syncRecentGames();
+  loadAndApplyPreferences();
   handleRoute();
 };
+
+// ─── FAQ Page ────────────────────────────────────────────
+
+function showFaqPage() {
+  document.getElementById('landingPage').classList.add('hidden');
+  document.getElementById('setupScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('statsPage').classList.add('hidden');
+  document.getElementById('prefsPage').classList.add('hidden');
+  document.getElementById('faqPage').classList.remove('hidden');
+
+  // Show/hide cancel button based on subscription status
+  const cancelBtn = document.getElementById('faqCancelBtn');
+  if (cancelBtn) {
+    const hasSub = isProLoggedIn() && proUser.tier === 'pro';
+    cancelBtn.style.display = hasSub ? '' : 'none';
+  }
+}
+
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  item.classList.toggle('open');
+}
+
+async function confirmCancelFromFaq() {
+  const btn = document.getElementById('faqCancelBtn');
+  if (btn.dataset.confirming === 'true') {
+    // Second click — execute cancel
+    btn.disabled = true;
+    btn.textContent = 'Cancelling...';
+    await executeCancelSubscription();
+    btn.style.display = 'none';
+    return;
+  }
+  // First click — ask for confirmation
+  btn.dataset.confirming = 'true';
+  btn.textContent = 'Are you sure? Tap again to confirm';
+  btn.className = 'btn btn-small btn-danger';
+  setTimeout(() => {
+    if (btn.dataset.confirming === 'true') {
+      btn.dataset.confirming = '';
+      btn.textContent = 'Cancel My Subscription';
+      btn.className = 'btn btn-small btn-secondary';
+    }
+  }, 5000);
+}
+
+// ─── Force Refresh (PWA) ─────────────────────────────────
+
+async function forceRefresh() {
+  showToast('Checking for updates...');
+  try {
+    // Unregister service worker
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of registrations) {
+      await reg.unregister();
+    }
+    // Clear all caches
+    const cacheNames = await caches.keys();
+    for (const name of cacheNames) {
+      await caches.delete(name);
+    }
+    // Reload
+    window.location.reload(true);
+  } catch (e) {
+    window.location.reload(true);
+  }
+}
 
 // Handle Enter key on join input
 document.getElementById('joinCodeInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') joinGame();
 });
+
+// ─── Post-Game Pro Prompt ────────────────────────────────
+
+function showPostGamePrompt(game) {
+  // Find the turn history area to insert the prompt after the winner banner
+  const container = document.getElementById('turnHistory');
+  if (!container) return;
+
+  // Remove any existing prompt
+  const existing = container.querySelector('.pro-prompt');
+  if (existing) existing.remove();
+
+  if (isProLoggedIn()) {
+    // Logged in — show quick stat + link to dashboard
+    let statLine = '';
+    if (game.gameType === 'x01') {
+      const myTurns = game.turns.filter(t => !game.players.find(p => p.id === t.playerId && p.isAI));
+      const nonBust = myTurns.filter(t => !t.bust);
+      if (nonBust.length > 0) {
+        const avg = Math.round((nonBust.reduce((s, t) => s + t.turnTotal, 0) / nonBust.length) * 100) / 100;
+        statLine = `Your 3-dart average this game: <strong>${avg}</strong>`;
+      }
+    }
+
+    const prompt = document.createElement('div');
+    prompt.className = 'pro-prompt';
+    prompt.innerHTML = `
+      <div class="pro-prompt-title">Game recorded!</div>
+      ${statLine ? `<div class="pro-prompt-stat">${statLine}</div>` : ''}
+      <button class="btn btn-small btn-accent" onclick="showStatsPage()">View My Stats</button>
+    `;
+    container.prepend(prompt);
+  } else {
+    // Not logged in — tease account creation
+    const prompt = document.createElement('div');
+    prompt.className = 'pro-prompt';
+    prompt.innerHTML = `
+      <div class="pro-prompt-title">Track your progress</div>
+      <div class="pro-prompt-stat">Create a free account to save your game stats, see your averages, and track improvement over time.</div>
+      <button class="btn btn-small btn-accent" onclick="showAuthModal('register')">Create Free Account</button>
+      <div class="pro-prompt-cta">Already have an account? <a href="#" onclick="showAuthModal('login'); return false;" style="color:var(--accent-green);">Sign in</a></div>
+    `;
+    container.prepend(prompt);
+  }
+}

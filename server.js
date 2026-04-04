@@ -2,7 +2,14 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const cookieParser = require('cookie-parser');
 const { Server } = require('socket.io');
+const { trackVisits } = require('../../shared/analytics');
+const stats = require('./server/stats');
+const proAuthRoutes = require('./server/pro-auth');
+const { optionalAuth } = require('./server/pro-auth');
+const statsApiRoutes = require('./server/stats-api');
+const squareRoutes = require('./server/square');
 
 const PORT = process.env.PORT || 3007;
 
@@ -10,6 +17,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+app.use(cookieParser());
+app.use(trackVisits('dart-scorer'));
 app.use(express.json());
 
 // No cache on sw.js so browser always checks for updates
@@ -19,7 +28,14 @@ app.get('/sw.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'sw.js'));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  dotfiles: 'allow',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
+}));
 
 // Game storage — persisted to disk
 const DATA_DIR = path.join(__dirname, 'data');
@@ -675,10 +691,29 @@ function generateAIDarts(game, difficulty) {
   }
 }
 
+// ─── Stats Persistence ───────────────────────────────────
+
+function saveGameStats(game) {
+  if (game.gameActive || game.turns.length === 0) return;
+
+  const visitorMap = {};
+  const visitorId = game.visitorId || null;
+  // Use pro user ID from game, or look up from visitor map
+  const userId = game.proUserId || (visitorId ? stats.getUserForVisitor(visitorId) : null);
+
+  for (const player of game.players) {
+    if (!player.isAI) {
+      visitorMap[player.id] = { visitorId, userId };
+    }
+  }
+
+  stats.extractAndSave(game, visitorMap);
+}
+
 // ─── API Routes ───────────────────────────────────────────
 
 // Create new game
-app.post('/api/game/new', (req, res) => {
+app.post('/api/game/new', optionalAuth, (req, res) => {
   const { gameType, playerNames, settings, playMode, aiDifficulty } = req.body;
 
   if (!gameType || !playerNames || !Array.isArray(playerNames)) {
@@ -735,6 +770,10 @@ app.post('/api/game/new', (req, res) => {
       gameData.players[1].isAI = true;
     }
 
+    // Tag with visitor ID and pro user for stats tracking
+    gameData.visitorId = req.cookies && req.cookies.oz_vid || null;
+    gameData.proUserId = req.proUser ? req.proUser.sub : null;
+
     games.set(gameId, gameData);
     saveGames();
     res.json(gameData);
@@ -769,6 +808,7 @@ app.post('/api/game/:gameId/throw', (req, res) => {
     }
     broadcastGameUpdate(req.params.gameId, game);
     saveGames();
+    if (!game.gameActive) saveGameStats(game);
     res.json(game);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -851,6 +891,7 @@ app.post('/api/game/:gameId/end', (req, res) => {
 
   broadcastGameUpdate(req.params.gameId, game);
   saveGames();
+  saveGameStats(game);
   res.json(game);
 });
 
@@ -865,6 +906,13 @@ app.delete('/api/game/:gameId', (req, res) => {
 
   res.json({ ok: true });
 });
+
+// ─── Pro Auth & Stats Routes ─────────────────────────────
+
+app.use('/api/auth', proAuthRoutes);
+app.use('/api/stats', statsApiRoutes);
+app.use('/api/square', squareRoutes);
+app.use('/api/webhooks', squareRoutes);
 
 // SPA fallback
 app.get('/{*splat}', (req, res) => {
@@ -896,6 +944,26 @@ setInterval(() => {
     }
   }
   if (changed) saveGames();
+}, 60 * 60 * 1000); // Check hourly
+
+// ─── Expire cancelled subscriptions past their paid period ─
+
+setInterval(() => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const expired = stats.getDb().prepare(`
+      UPDATE pro_users SET tier = 'free'
+      WHERE subscription_status = 'CANCELED'
+        AND tier = 'pro'
+        AND subscription_end IS NOT NULL
+        AND subscription_end <= ?
+    `).run(today);
+    if (expired.changes > 0) {
+      console.log(`Downgraded ${expired.changes} expired cancelled subscription(s)`);
+    }
+  } catch (e) {
+    // Non-critical
+  }
 }, 60 * 60 * 1000); // Check hourly
 
 // ─── Start ────────────────────────────────────────────────

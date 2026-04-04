@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dart Scorer</title>
 
   <!-- PWA -->
@@ -16,11 +16,44 @@
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
+  <script>
+    // Early auth check to prevent flash of wrong content
+    try {
+      var _a = JSON.parse(localStorage.getItem('dart_scorer_auth'));
+      if (_a && _a.user) document.body.classList.add('is-logged-in');
+    } catch(e) {}
+  </script>
+
+  <!-- ─── Scrolling Banner (anonymous users) ── -->
+  <div id="anonBanner" class="anon-banner" style="display:none;">
+    <div class="anon-banner-track">
+      <span class="anon-banner-text">Your game data is stored on this device only — create a free account to save your stats and access them anywhere</span>
+      <span class="anon-banner-sep">&bull;</span>
+      <span class="anon-banner-text">Your game data is stored on this device only — create a free account to save your stats and access them anywhere</span>
+      <span class="anon-banner-sep">&bull;</span>
+    </div>
+    <button class="anon-banner-btn" onclick="showAuthModal('register')">Sign Up Free</button>
+  </div>
 
   <!-- ─── Landing Page ─────────────────────── -->
   <div id="landingPage" class="page landing-page">
     <div class="container">
-      <h1 class="app-title">Dart Scorer</h1>
+      <!-- User Menu Bar -->
+      <div class="user-bar" id="userBar">
+        <div class="user-bar-left">
+          <button class="btn btn-small btn-outline" id="myStatsBtn" onclick="showStatsPage()" style="display:none;">My Stats</button>
+        <button class="btn btn-small btn-outline" id="myPrefsBtn" onclick="showPrefsPage()" style="display:none;">Preferences</button>
+        </div>
+        <div class="user-bar-right" id="userBarRight">
+          <button class="btn btn-small btn-accent" onclick="showAuthModal('register')">Create Account</button>
+          <button class="btn btn-small btn-outline" onclick="showAuthModal('login')">Sign In</button>
+        </div>
+      </div>
+
+      <div class="title-row">
+        <h1 class="app-title">Dart Scorer</h1>
+        <button class="refresh-btn" onclick="forceRefresh()" title="Check for updates">&#x21bb;</button>
+      </div>
       <p class="app-subtitle">Scorekeeper for your dart games</p>
 
       <div class="landing-section card">
@@ -29,13 +62,40 @@
         <button class="btn btn-primary" onclick="showSetupScreen()">Create Game</button>
       </div>
 
-      <div class="landing-section card">
+      <div class="landing-section card" id="joinGameCard" style="display:none;">
         <h2>Join Game</h2>
         <p class="text-muted">Enter a game code to follow along</p>
         <div class="join-row">
           <input type="text" id="joinCodeInput" class="input" placeholder="Game code or URL" maxlength="50" />
           <button class="btn btn-primary" onclick="joinGame()">Join</button>
         </div>
+      </div>
+
+      <!-- Multiplayer teaser for anonymous users -->
+      <div class="landing-section card" id="multiplayerTeaser" style="display:none;">
+        <h2>Play with Friends</h2>
+        <p class="text-muted">Create a free account to unlock multiplayer, vs virtual opponents, and join games with friends.</p>
+        <button class="btn btn-accent" onclick="showAuthModal('register')">Create Free Account</button>
+      </div>
+
+      <!-- Account Prompt (anonymous users only — hidden by CSS when logged in) -->
+      <div class="landing-section account-banner" id="accountBanner" style="display:none;">
+        <div class="account-banner-icon">&#127919;</div>
+        <div class="account-banner-text">
+          <strong>Track your progress</strong>
+          <p>Create a free account to unlock multiplayer, save your stats, and play with friends.</p>
+        </div>
+        <button class="btn btn-accent" onclick="showAuthModal('register')">Create Free Account</button>
+      </div>
+
+      <!-- Pro Nudge (logged-in free users only — hidden by CSS when not logged in) -->
+      <div class="landing-section account-banner" id="proBanner" style="display:none;">
+        <div class="account-banner-icon">&#11088;</div>
+        <div class="account-banner-text">
+          <strong>Try Pro Free for 7 Days</strong>
+          <p>Unlock sounds, announcer, detailed stats, turn history, and improvement trends.</p>
+        </div>
+        <button class="btn btn-accent" onclick="showUpgradeModal()">Start Free Trial</button>
       </div>
 
       <div class="landing-section card" id="recentGamesSection" style="display:none;">
@@ -232,6 +292,220 @@
     </div>
   </div>
 
+  <!-- ─── Stats Page ───────────────────────── -->
+  <div id="statsPage" class="page stats-page hidden">
+    <div class="container">
+      <div class="stats-header">
+        <h1 class="app-title">My Stats</h1>
+        <button class="btn btn-small btn-secondary" onclick="showLandingPage()">Back</button>
+      </div>
+      <div id="statsContent">
+        <div class="loading-text">Loading stats...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Preferences Page ────────────────── -->
+  <div id="prefsPage" class="page prefs-page hidden">
+    <div class="container">
+      <div class="stats-header">
+        <h1 class="app-title">Preferences</h1>
+        <button class="btn btn-small btn-secondary" onclick="showLandingPage()">Back</button>
+      </div>
+      <div id="prefsContent">
+        <div class="loading-text">Loading preferences...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── FAQ Page ────────────────────────── -->
+  <div id="faqPage" class="page faq-page hidden">
+    <div class="container">
+      <div class="stats-header">
+        <h1 class="app-title">Help & FAQ</h1>
+        <button class="btn btn-small btn-secondary" onclick="showLandingPage()">Back</button>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">What is Dart Scorer Pro?</button>
+          <div class="faq-answer">
+            <p>Dart Scorer Pro is a premium upgrade that unlocks advanced features including dart sounds, voice announcer, detailed game statistics, improvement insights, turn history, cross-device game sync, and customizable preferences.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">What's included in the free version?</button>
+          <div class="faq-answer">
+            <p>The free version includes the full dart scorer for solo practice with all game types (X01, Cricket, Around the Clock). Creating a free account unlocks multiplayer, vs virtual opponents, and joining games with friends.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How does the free trial work?</button>
+          <div class="faq-answer">
+            <p>When you upgrade to Pro, you get a 7-day free trial with full access to all Pro features. A payment method is required to start the trial, but you won't be charged until the trial ends. If you cancel before the 7 days are up, you won't be charged at all.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How do I switch between monthly and annual plans?</button>
+          <div class="faq-answer">
+            <p>To switch plans, cancel your current subscription first. You'll keep Pro access until the end of your current billing period. Then simply re-subscribe on your preferred plan. Your stats and account data are always preserved.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How do I cancel my subscription?</button>
+          <div class="faq-answer">
+            <p>You can cancel your subscription at any time. If you're on a trial, you won't be charged. If you're on a paid plan, you'll keep Pro access until the end of your current billing period.</p>
+            <button class="btn btn-small btn-secondary" id="faqCancelBtn" onclick="confirmCancelFromFaq()" style="margin-top:0.75rem;">Cancel My Subscription</button>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">Will I lose my stats if I cancel?</button>
+          <div class="faq-answer">
+            <p>No — your game history and stats are saved permanently with your account. If you cancel Pro, you'll lose access to detailed stats and insights, but your data stays. If you re-subscribe later, everything will be there.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How do I change my display name?</button>
+          <div class="faq-answer">
+            <p>Pro users can change their display name in Preferences. Free users can update it through the Account modal.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How do I use the app on multiple devices?</button>
+          <div class="faq-answer">
+            <p>Simply sign in with the same email and password on any device. Your account, stats, and Pro status sync automatically. Pro users also get their recent games and preferences synced across devices.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)">How do I contact support?</button>
+          <div class="faq-answer">
+            <p>For help or feedback, visit <a href="https://oz-projects.com/#contact" style="color:var(--accent-green);">oz-projects.com/contact</a>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Auth Modal ─────────────────────── -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal-content auth-modal">
+      <div class="modal-header">
+        <h2 id="authModalTitle">Sign In</h2>
+        <button class="modal-close" onclick="hideAuthModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-error" id="authError" style="display:none;"></div>
+        <div class="auth-success" id="authSuccess" style="display:none;"></div>
+
+        <!-- Login Form -->
+        <form id="loginForm" onsubmit="handleProLogin(event)">
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" class="input" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <input type="password" id="loginPassword" class="input" required autocomplete="current-password" minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Sign In</button>
+          <p class="auth-switch">Don't have an account? <a href="#" onclick="switchAuthMode('register'); return false;">Create one free</a></p>
+        </form>
+
+        <!-- Register Form -->
+        <form id="registerForm" onsubmit="handleProRegister(event)" style="display:none;">
+          <div class="form-group">
+            <label for="regName">Display Name</label>
+            <input type="text" id="regName" class="input" placeholder="How you appear on the board" autocomplete="name">
+          </div>
+          <div class="form-group">
+            <label for="regEmail">Email</label>
+            <input type="email" id="regEmail" class="input" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label for="regPassword">Password</label>
+            <input type="password" id="regPassword" class="input" required autocomplete="new-password" minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Create Free Account</button>
+          <p class="auth-switch">Already have an account? <a href="#" onclick="switchAuthMode('login'); return false;">Sign in</a></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Upgrade Modal ───────────────────── -->
+  <div class="modal-overlay" id="upgradeModal">
+    <div class="modal-content upgrade-modal">
+      <div class="modal-header">
+        <h2 id="upgradeModalTitle">Try Pro Free</h2>
+        <button class="modal-close" onclick="hideUpgradeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="upgrade-trial-banner" id="upgradeTrialBanner">
+          <span class="trial-badge">7-DAY FREE TRIAL</span>
+          <p>Full Pro access free for 7 days. Cancel anytime before the trial ends and you won't be charged.</p>
+        </div>
+
+        <div class="upgrade-features">
+          <p class="upgrade-feature-title">What you get with Pro</p>
+          <ul class="upgrade-feature-list">
+            <li>Dart sounds &amp; announcer</li>
+            <li>Turn history during games</li>
+            <li>Detailed stats &amp; averages</li>
+            <li>Game history across devices</li>
+            <li>Improvement trends over time</li>
+            <li>Checkout analysis &amp; suggestions</li>
+          </ul>
+        </div>
+
+        <p class="upgrade-plan-label">Select plan after trial:</p>
+        <div class="plan-picker">
+          <button class="plan-btn selected" data-plan="monthly" onclick="selectPlan('monthly')">
+            <span class="plan-price">$5.99</span>
+            <span class="plan-period">/month</span>
+          </button>
+          <button class="plan-btn" data-plan="annual" onclick="selectPlan('annual')">
+            <span class="plan-price">$49.99</span>
+            <span class="plan-period">/year</span>
+            <span class="plan-save">Save $22</span>
+          </button>
+        </div>
+
+        <div id="upgradeError" class="auth-error" style="display:none;"></div>
+
+        <div id="cardContainer" class="card-form-container">
+          <!-- Square Web Payments SDK renders here -->
+        </div>
+
+        <button class="btn btn-accent upgrade-pay-btn" id="upgradePayBtn" onclick="handleUpgrade()" disabled>
+          Start Free Trial
+        </button>
+
+        <p class="upgrade-terms">You won't be charged until your trial ends. Cancel anytime. Secure payment via Square.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Account Modal ───────────────────── -->
+  <div class="modal-overlay" id="accountModal">
+    <div class="modal-content account-modal">
+      <div class="modal-header">
+        <h2>Account</h2>
+        <button class="modal-close" onclick="hideAccountModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="accountModalBody">
+        <div class="loading-text">Loading...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── Toast ────────────────────────────── -->
   <div id="toast" class="toast hidden"></div>
 
@@ -243,6 +517,10 @@
   <script src="/js/cricket.js"></script>
   <script src="/js/around-the-clock.js"></script>
   <script src="/js/ai.js"></script>
+  <script src="/js/pro-auth.js"></script>
+  <script src="/js/stats-dashboard.js"></script>
+  <script src="/js/preferences.js"></script>
+  <script src="/js/upgrade.js"></script>
   <script src="/js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
