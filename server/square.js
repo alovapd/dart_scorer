@@ -8,6 +8,7 @@ const fs = require('fs');
 const { SquareClient, SquareEnvironment } = require('square');
 const { authenticate } = require('./pro-auth');
 const stats = require('./stats');
+const ozbooks = require('./ozbooks');
 
 const router = express.Router();
 
@@ -129,6 +130,17 @@ router.post('/subscribe', authenticate, async (req, res) => {
       user.id
     );
 
+    // For non-trial, record initial payment in OzBooks
+    if (!isTrial) {
+      ozbooks.recordSubscriptionPayment({
+        email: user.email,
+        displayName: user.display_name,
+        plan,
+        amount: price,
+        paymentDate: todayStr,
+      }).catch(e => console.error('OzBooks recording failed:', e.message));
+    }
+
     res.json({
       success: true,
       trial: isTrial,
@@ -227,12 +239,12 @@ router.get('/subscription', authenticate, (req, res) => {
 
 // POST /api/webhooks/square — Square webhook handler
 // This must NOT use authenticate middleware — Square calls it directly
-router.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-  // Verify webhook signature if configured
-  const body = req.body.toString('utf8');
+router.post('/webhook', (req, res) => {
   let event;
   try {
-    event = JSON.parse(body);
+    // Body may already be parsed by express.json() or may be raw
+    event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (Buffer.isBuffer(req.body)) event = JSON.parse(req.body.toString('utf8'));
   } catch (e) {
     return res.status(400).send('Invalid JSON');
   }
@@ -257,7 +269,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), (req, res) =>
         break;
       }
       case 'invoice.payment_made': {
-        console.log('Payment received for invoice:', event.data?.object?.invoice?.id);
+        const invoice = event.data?.object?.invoice;
+        if (invoice) {
+          handlePaymentMade(invoice);
+        }
         break;
       }
     }
@@ -301,6 +316,46 @@ function handleSubscriptionUpdate(subscription) {
   }
 
   console.log(`Subscription ${subscription.id} → ${status} for user ${user.email}`);
+}
+
+// Handle payment received — record in OzBooks and send receipt
+function handlePaymentMade(invoice) {
+  const db = stats.getDb();
+
+  // Find user by Square subscription ID from the invoice
+  const subscriptionId = invoice.subscriptionId;
+  if (!subscriptionId) {
+    console.log('Payment webhook: no subscription ID on invoice');
+    return;
+  }
+
+  const user = db.prepare('SELECT * FROM pro_users WHERE square_subscription_id = ?')
+    .get(subscriptionId);
+
+  if (!user) {
+    console.log('Payment webhook: no user found for subscription', subscriptionId);
+    return;
+  }
+
+  // Calculate amount from invoice payment
+  const amount = invoice.paymentRequests?.[0]?.computedAmountMoney?.amount
+    || invoice.paymentRequests?.[0]?.fixedPriceMoney?.amount
+    || user.subscription_price;
+
+  const paymentDate = invoice.updatedAt
+    ? invoice.updatedAt.slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  console.log(`Payment received: $${(Number(amount) / 100).toFixed(2)} from ${user.email}`);
+
+  // Record in OzBooks (async, non-blocking)
+  ozbooks.recordSubscriptionPayment({
+    email: user.email,
+    displayName: user.display_name,
+    plan: user.subscription_plan,
+    amount: Number(amount),
+    paymentDate,
+  }).catch(e => console.error('OzBooks recording failed:', e.message));
 }
 
 module.exports = router;
