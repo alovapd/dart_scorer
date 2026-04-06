@@ -17,8 +17,15 @@ function selectPlan(plan) {
 
 async function loadSquareConfig() {
   if (squareConfig) return squareConfig;
-  const res = await fetch('/api/square/config');
-  squareConfig = await res.json();
+  // Get Square config from centralized billing
+  try {
+    const res = await fetch('https://app.oz-projects.com/api/billing/square-config');
+    squareConfig = await res.json();
+  } catch (e) {
+    // Fallback to local
+    const res = await fetch('/api/square/config');
+    squareConfig = await res.json();
+  }
   return squareConfig;
 }
 
@@ -141,12 +148,10 @@ async function handleUpgrade() {
     }
     const cardToken = tokenResult.token;
 
-    const res = await proFetch('/api/square/subscribe', {
+    const res = await proFetch('/api/billing/subscribe', {
       method: 'POST',
       body: JSON.stringify({
         cardToken: cardToken,
-        plan: selectedPlan,
-        trial: upgradeIsTrial,
       }),
     });
 

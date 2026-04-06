@@ -911,8 +911,57 @@ app.delete('/api/game/:gameId', (req, res) => {
 
 app.use('/api/auth', proAuthRoutes);
 app.use('/api/stats', statsApiRoutes);
-app.use('/api/square', squareRoutes);
+// Legacy Square routes (webhook fallback during transition)
 app.use('/api/webhooks', squareRoutes);
+
+// Billing proxy — forwards subscribe to portal centralized billing
+const { authenticate: proAuth } = require('./server/pro-auth');
+app.post('/api/billing/subscribe', proAuth, async (req, res) => {
+  const { cardToken } = req.body;
+  const user = stats.getProUserById(req.proUser.sub);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  try {
+    // First, ensure user has an OzAuth account (created during migration)
+    const portalUrl = 'http://localhost:5439';
+    const apiKey = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'employee', 'data', '.internal-api-key'), 'utf8').trim();
+
+    // Use the portal's internal subscribe endpoint
+    const proxyRes = await fetch(portalUrl + '/api/billing/check-by-email?email=' + encodeURIComponent(user.email) + '&service=dart-scorer-pro', {
+      headers: { 'X-Internal-API-Key': apiKey },
+    });
+    const check = await proxyRes.json();
+
+    // If already active, just sync locally
+    if (check.active) {
+      stats.updateProUserTier(user.id, 'pro');
+      return res.json({ success: true, trial: false });
+    }
+
+    // Forward subscribe to portal — need OzAuth user ID
+    // Find OzAuth user by email
+    const findRes = await fetch(portalUrl + '/api/billing/check-by-email?email=' + encodeURIComponent(user.email) + '&service=dart-scorer-pro', {
+      headers: { 'X-Internal-API-Key': apiKey },
+    });
+
+    // Use admin add-service endpoint via internal key
+    const addRes = await fetch(portalUrl + '/api/billing/subscribe-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Internal-API-Key': apiKey },
+      body: JSON.stringify({ email: user.email, serviceSlug: 'dart-scorer-pro', cardToken }),
+    });
+    const data = await addRes.json();
+    if (!addRes.ok) throw new Error(data.error || 'Subscription failed');
+
+    // Sync tier locally
+    stats.updateProUserTier(user.id, 'pro');
+
+    res.json({ success: true, trial: data.trial || false, trialEndsAt: data.trialEndsAt });
+  } catch (e) {
+    console.error('Billing proxy error:', e.message);
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // SPA fallback
 app.get('/{*splat}', (req, res) => {

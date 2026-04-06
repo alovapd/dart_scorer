@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const stats = require('./stats');
+const { checkServiceByEmail } = require('../../../shared/billing-client');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -63,6 +64,23 @@ function optionalAuth(req, res, next) {
     }
   }
   next();
+}
+
+// Check centralized billing and sync tier to local user
+async function syncBillingStatus(user) {
+  try {
+    const billing = await checkServiceByEmail(user.email, 'dart-scorer-pro');
+    if (billing.active) {
+      const newTier = billing.status === 'trial' ? 'pro' : 'pro';
+      if (user.tier !== newTier) {
+        stats.updateProUserTier(user.id, newTier);
+      }
+      return newTier;
+    }
+  } catch (e) {
+    // Centralized billing unreachable — use local tier
+  }
+  return user.tier;
 }
 
 // POST /api/auth/register
@@ -141,7 +159,10 @@ router.post('/login', async (req, res) => {
     gamesClaimed = stats.claimGamesForUser(user.id, visitorId);
   }
 
-  const token = generateToken(user);
+  // Sync tier from centralized billing on login
+  const currentTier = await syncBillingStatus(user);
+  const userForToken = { ...user, tier: currentTier };
+  const token = generateToken(userForToken);
   stats.updateProUserLogin(user.id);
 
   res.json({
@@ -150,25 +171,28 @@ router.post('/login', async (req, res) => {
       id: user.id,
       email: user.email,
       displayName: user.display_name,
-      tier: user.tier,
+      tier: currentTier,
     },
     gamesClaimed,
   });
 });
 
 // GET /api/auth/me
-router.get('/me', authenticate, (req, res) => {
+router.get('/me', authenticate, async (req, res) => {
   const user = stats.getProUserById(req.proUser.sub);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
+
+  // Sync tier from centralized billing
+  const currentTier = await syncBillingStatus(user);
 
   res.json({
     user: {
       id: user.id,
       email: user.email,
       displayName: user.display_name,
-      tier: user.tier,
+      tier: currentTier,
       subscriptionStatus: user.subscription_status,
       subscriptionPlan: user.subscription_plan,
       trialEndsAt: user.trial_ends_at,
